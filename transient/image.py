@@ -26,11 +26,12 @@ class ImageInfo:
     def path(self) -> str:
         return os.path.join(self.store.root, self.name)
 
+
 class ImageStore:
     root: str
     qemu_img_bin: str
 
-    def __init__(self, *, root: Optional[str]=None) -> None:
+    def __init__(self, *, root: Optional[str] = None) -> None:
         self.root = root or self.__default_root()
         self.qemu_img_bin = self.__default_qemu_img_bin()
 
@@ -68,7 +69,7 @@ class ImageStore:
             if version_info["version"] != version:
                 continue
             for provider in version_info["providers"]:
-                #TODO: we should also support 'qemu'
+                # TODO: we should also support 'qemu'
                 if provider["name"] != "libvirt":
                     continue
 
@@ -156,6 +157,6 @@ class ImageStore:
 
     def images(self) -> List[ImageInfo]:
         image_paths = [os.path.join(self.root, f) for f in os.listdir(self.root)
-                  if os.path.isfile(os.path.join(self.root, f))]
+                       if os.path.isfile(os.path.join(self.root, f))]
 
         return [self.__image_info(image) for image in image_paths]

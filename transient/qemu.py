@@ -3,6 +3,7 @@ import subprocess
 
 from typing import List, Optional
 
+
 class QemuRunner:
     bin_name: str
     args: List[str]
@@ -12,7 +13,7 @@ class QemuRunner:
     # subprocess.Popen is not actually subscriptable.
     proc_handle: 'Optional[subprocess.Popen[bytes]]'
 
-    def __init__(self, args: List[str], *, bin_name: Optional[str]=None) -> None:
+    def __init__(self, args: List[str], *, bin_name: Optional[str] = None) -> None:
         self.bin_name = bin_name or self.__find_qemu_bin_name()
         self.args = args
         self.proc_handle = None

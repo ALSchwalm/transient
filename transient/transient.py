@@ -3,6 +3,7 @@ from . import image
 
 from typing import Optional, List, Dict, Any, Union
 
+
 class TransientVm:
     store: image.ImageStore
     config: Dict[str, Any]
