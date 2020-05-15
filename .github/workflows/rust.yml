@@ -1,0 +1,19 @@
+name: Transient
+
+on: [push]
+
+jobs:
+  Check:
+    runs-on: ubuntu-18.04
+    container: python:3
+    steps:
+    - uses: actions/checkout@v1
+    - name: Format
+      run: |
+        pip install -r requirements.txt
+        make check-format
+    - uses: actions/checkout@v1
+    - name: Types
+      run: |
+        pip install -r requirements.txt
+        make check-types
