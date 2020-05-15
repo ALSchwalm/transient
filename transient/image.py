@@ -2,7 +2,9 @@ import json
 import logging
 import os
 import requests
+import shutil
 import subprocess
+import tarfile
 
 from typing import Optional, List, Dict, Any, Union
 
@@ -31,6 +33,10 @@ class ImageStore:
         self.root = root or self.__default_root()
         self.qemu_img_bin = self.__default_qemu_img_bin()
 
+        if not os.path.exists(self.root):
+            logging.info("Creating missing ImageStore root at '{}'".format(self.root))
+            os.mkdir(self.root)
+
     def __default_root(self) -> str:
         return "images"
 
@@ -54,7 +60,7 @@ class ImageStore:
         return json.loads(response.content)
 
     def __pathsafe_image_name(self, image_name: str) -> str:
-        return image_name.replace("/", "_")
+        return image_name.replace("/", "_").replace(":", "_")
 
     def __vagrant_box_url(self, version, box_info) -> str:
         for version_info in box_info["versions"]:
@@ -84,9 +90,20 @@ class ImageStore:
         box_url = self.__vagrant_box_url(version, box_info)
 
         stream = requests.get(box_url, allow_redirects=True)
-        with open(destination, 'wb') as f:
+
+        box_destination = destination + ".box"
+        with open(box_destination, 'wb') as f:
             for block in stream.iter_content(4 * 1024):
                 f.write(block)
+
+        # libvirt boxes _should_ just be tar.gz files with a box.img file
+        with tarfile.open(box_destination, "r") as tar:
+            in_stream = tar.extractfile("box.img")
+            out_stream = open(destination, 'wb')
+            shutil.copyfileobj(in_stream, out_stream)
+
+        # And clean up the box
+        os.remove(box_destination)
 
     def retrieve_image(self, image_name: str) -> ImageInfo:
         pathsafe_name = self.__pathsafe_image_name(image_name)

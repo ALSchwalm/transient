@@ -30,7 +30,6 @@ class TransientVm:
         added_qemu_args = self.__format_new_qemu_args()
         final_qemu_args = added_qemu_args + self.config["qemu_args"]
 
-        return
         runner = qemu.QemuRunner(final_qemu_args)
 
         runner.start()
