@@ -6,7 +6,8 @@ import shutil
 import subprocess
 import tarfile
 
-from typing import Optional, List, Dict, Any, Union
+from typing import cast, Optional, List, Dict, Any, Union
+
 
 class ImageInfo:
     store: 'ImageStore'
@@ -57,12 +58,12 @@ class ImageStore:
         except requests.exceptions.HTTPError:
             raise RuntimeError("Unable to download vagrant image '{}' info. Maybe invalid image?"
                                .format(image_name))
-        return json.loads(response.content)
+        return cast(Dict[str, Any], json.loads(response.content))
 
     def __pathsafe_image_name(self, image_name: str) -> str:
         return image_name.replace("/", "_").replace(":", "_")
 
-    def __vagrant_box_url(self, version, box_info) -> str:
+    def __vagrant_box_url(self, version: str, box_info: Dict[str, Any]) -> str:
         for version_info in box_info["versions"]:
             if version_info["version"] != version:
                 continue
@@ -70,7 +71,10 @@ class ImageStore:
                 #TODO: we should also support 'qemu'
                 if provider["name"] != "libvirt":
                     continue
-                return provider["download_url"]
+
+                download_url = provider["download_url"]
+                assert(isinstance(download_url, str))
+                return download_url
         raise RuntimeError("No version '{}' available for {} with provider libvirt"
                            .format(version, box_info["tag"]))
 
@@ -100,7 +104,10 @@ class ImageStore:
         with tarfile.open(box_destination, "r") as tar:
             in_stream = tar.extractfile("box.img")
             out_stream = open(destination, 'wb')
-            shutil.copyfileobj(in_stream, out_stream)
+
+            # mypy appears to have a bug in their type definitions. Just cast in_stream
+            # to any to convince it that this is ok.
+            shutil.copyfileobj(cast(Any, in_stream), out_stream)
 
         # And clean up the box
         os.remove(box_destination)
