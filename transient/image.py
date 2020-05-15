@@ -129,9 +129,10 @@ class ImageStore:
         logging.info("Finished downloading image: {}".format(image_name))
         return self.__image_info(destination)
 
-    def create_vm_image(self, image_name: str, vm_name: str) -> ImageInfo:
+    def create_vm_image(self, image_name: str, vm_name: str, num: int) -> ImageInfo:
         backing_image = self.retrieve_image(image_name)
-        new_image_path = os.path.join(self.root, "{}-{}".format(vm_name, backing_image.name))
+        new_image_path = os.path.join(
+            self.root, "{}-{}-{}".format(vm_name, num, backing_image.name))
 
         if os.path.exists(new_image_path):
             logging.info("VM image '{}' already exists. Skipping create.".format(new_image_path))

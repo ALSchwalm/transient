@@ -15,8 +15,8 @@ class TransientVm:
         self.vm_images = []
 
     def __create_images(self, names: List[str]) -> List[image.ImageInfo]:
-        return [self.store.create_vm_image(image_name, self.config["name"])
-                for image_name in names]
+        return [self.store.create_vm_image(image_name, self.config["name"], idx)
+                for idx, image_name in enumerate(names)]
 
     def __format_new_qemu_args(self) -> List[str]:
         new_args = []
