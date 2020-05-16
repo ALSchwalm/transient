@@ -47,7 +47,7 @@ class ImageStore:
 
     def __image_info(self, name: str) -> ImageInfo:
         info = subprocess.run([self.qemu_img_bin,
-                               "info", "--output=json", name],
+                               "info", "-U", "--output=json", name],
                               capture_output=True, check=True)
         return ImageInfo(self, json.loads(info.stdout))
 

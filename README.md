@@ -25,3 +25,20 @@ python -m transient \
    -- \
    -nographic -enable-kvm -m 1G
 ```
+
+`transient` also supports a `vagrant` style SSH connection. This will start the
+virtual machine and connect standard input and output to an SSH connection
+with the machine, instead of the serial console. However, when this connection
+is closed, the machine will be terminated (unlike `vagrant`). For example:
+
+```
+python -m transient \
+   -name test-vm \
+   -ssh-console \
+   -image centos/7:2004.01 \
+   -- \
+   -enable-kvm -m 1G
+```
+
+The `-ssh-console` flag depends on the image having the normal vagrant keypair
+trusted for the `vagrant` user.

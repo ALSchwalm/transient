@@ -1,5 +1,6 @@
 import argparse
 import logging
+import sys
 
 from . import transient
 
@@ -23,6 +24,8 @@ def parse_arguments() -> argparse.Namespace:
 
     parser.add_argument('-ssh-console', '-s', action='store_const', const=True,
                         default=False, help='Use an ssh connection instead of the serial console')
+
+    parser.add_argument('-ssh-user', '-u', default="vagrant", help='User to pass to SSH')
 
     parser.add_argument('-sync-before', '-b', nargs='+', action='extend',
                         help='Sync a host path to a guest path before starting the guest')
@@ -51,4 +54,5 @@ def main() -> None:
     logging.debug("Parsed arguments: {}".format(args))
 
     trans = transient.TransientVm(config=vars(args))
-    trans.run()
+    returncode = trans.run()
+    sys.exit(returncode)

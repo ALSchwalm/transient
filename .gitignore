@@ -2,3 +2,4 @@
 venv/
 transient/__pycache__/
 images/
+transient/vagrant_keys/__pycache__/
