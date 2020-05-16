@@ -4,3 +4,5 @@ transient/__pycache__/
 images/
 transient/vagrant_keys/__pycache__/
 transient.egg-info/
+build/
+dist/

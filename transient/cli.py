@@ -26,6 +26,7 @@ def parse_arguments() -> argparse.Namespace:
                         default=False, help='Use an ssh connection instead of the serial console')
 
     parser.add_argument('-ssh-user', '-u', default="vagrant", help='User to pass to SSH')
+    parser.add_argument('-ssh-bin-name', default="ssh", help='SSH binary to use')
 
     parser.add_argument('-sync-before', '-b', nargs='+', action='extend',
                         help='Sync a host path to a guest path before starting the guest')

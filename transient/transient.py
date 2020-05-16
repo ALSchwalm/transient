@@ -35,7 +35,8 @@ class TransientVm:
         return new_args
 
     def __connect_ssh(self) -> int:
-        client = ssh.SshClient(user=self.config["ssh_user"])
+        client = ssh.SshClient(user=self.config["ssh_user"],
+                               ssh_bin_name=self.config["ssh_bin_name"])
         return client.connect()
 
     def run(self) -> int:

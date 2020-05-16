@@ -19,15 +19,29 @@ SSH_TIME_BETWEEN_TRIES = 5
 class SshClient:
     host: str
     port: int
+    ssh_bin_name: str
+    options: List[str]
     user: Optional[str]
     password: Optional[str]
 
     def __init__(self, *, host: str = "localhost", port: int = 5555,
-                 user: Optional[str] = None, password: Optional[str] = None):
+                 ssh_bin_name: Optional[str], user: Optional[str] = None,
+                 password: Optional[str] = None, options: Optional[List[str]] = None):
         self.host = host
         self.port = port
         self.user = user
         self.password = password
+        self.options = options or []
+        self.ssh_bin_name = ssh_bin_name or self.__find_ssh_bin_name()
+
+        # Pass these as default options
+        self.options.extend(self.__default_ssh_options())
+
+    def __default_ssh_options(self) -> List[str]:
+        return ["StrictHostKeyChecking=no", "UserKnownHostsFile=/dev/null"]
+
+    def __find_ssh_bin_name(self) -> str:
+        return "ssh"
 
     def __prepare_builtin_keys(self) -> List[str]:
         vagrant_priv = pkg_resources.read_text(vagrant_keys, 'vagrant')
@@ -47,7 +61,11 @@ class SshClient:
         priv_keys = self.__prepare_builtin_keys()
         for key in priv_keys:
             args.extend(["-i", key])
-        command = ["ssh"] + args + [host]
+
+        for option in self.options:
+            args.extend(["-o", option])
+
+        command = [self.ssh_bin_name] + args + [host]
 
         logging.info("Connecting ssh using command '{}'".format(" ".join(command)))
 
