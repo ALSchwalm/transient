@@ -2,40 +2,59 @@ from . import qemu
 from . import image
 from . import ssh
 
-from typing import Optional, List, Dict, Any, Union
+import socket
+from typing import cast, Optional, List, Dict, Any, Union
 
 
 class TransientVm:
     store: image.ImageStore
     config: Dict[str, Any]
     vm_images: List[image.ImageInfo]
+    ssh_port: Optional[int]
 
     def __init__(self, config: Dict[str, Any]) -> None:
         self.store = image.ImageStore()
         self.config = config
         self.vm_images = []
+        self.ssh_port = None
 
     def __create_images(self, names: List[str]) -> List[image.ImageInfo]:
         return [self.store.create_vm_image(image_name, self.config["name"], idx)
                 for idx, image_name in enumerate(names)]
 
-    def __format_new_qemu_args(self) -> List[str]:
+    def __qemu_added_devices(self) -> List[str]:
         new_args = []
         for image in self.vm_images:
             new_args.extend(["-drive", "file={}".format(image.path())])
 
         if self.config["ssh_console"] is True:
+
             new_args.append("-nographic")
 
             # Use userspace networking (so no root is needed), and bind
-            # localhost port 5555 to guest port 22
-            # TODO: try to find an available port
+            # the random localhost port to guest port 22
+            self.ssh_port = self.__allocate_random_port()
             new_args.extend(["-net", "nic,model=e1000",
-                             "-net", "user,hostfwd=tcp::5555-:22"])
+                             "-net", "user,hostfwd=tcp::{}-:22".format(self.ssh_port)])
         return new_args
 
+    def __allocate_random_port(self) -> int:
+        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+
+        # Binding to port 0 causes the kernel to allocate a port for us. Because
+        # it won't reuse that port until is _has_ to, this can safely be used
+        # as (for example) the ssh port for the guest and it 'should' be race-free
+        s.bind(("", 0))
+        addr = s.getsockname()
+        s.close()
+        return cast(int, addr[1])
+
     def __connect_ssh(self) -> int:
-        client = ssh.SshClient(user=self.config["ssh_user"],
+        assert(self.ssh_port is not None)
+
+        client = ssh.SshClient(host="localhost",
+                               port=self.ssh_port,
+                               user=self.config["ssh_user"],
                                ssh_bin_name=self.config["ssh_bin_name"])
         return client.connect()
 
@@ -43,7 +62,7 @@ class TransientVm:
         # First, download and setup any required disks
         self.vm_images = self.__create_images(self.config["image"])
 
-        added_qemu_args = self.__format_new_qemu_args()
+        added_qemu_args = self.__qemu_added_devices()
         full_qemu_args = added_qemu_args + self.config["qemu_args"]
 
         runner = qemu.QemuRunner(full_qemu_args, quiet=self.config["ssh_console"])

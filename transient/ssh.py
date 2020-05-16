@@ -24,9 +24,9 @@ class SshClient:
     user: Optional[str]
     password: Optional[str]
 
-    def __init__(self, *, host: str = "localhost", port: int = 5555,
-                 ssh_bin_name: Optional[str], user: Optional[str] = None,
-                 password: Optional[str] = None, options: Optional[List[str]] = None):
+    def __init__(self, *, host: str, port: int = 22, ssh_bin_name: Optional[str],
+                 user: Optional[str] = None, password: Optional[str] = None,
+                 options: Optional[List[str]] = None):
         self.host = host
         self.port = port
         self.user = user
