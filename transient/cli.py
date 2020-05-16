@@ -32,6 +32,8 @@ def parse_arguments() -> argparse.Namespace:
     parser.add_argument('-ssh-timeout', default=60, type=int,
                         help='Time to wait for SSH connection before failing')
 
+    parser.add_argument('-ssh-port', help='Local port the 22 of the guest is forwarded to')
+
     parser.add_argument('-sync-before', '-b', nargs='+', action='extend',
                         help='Sync a host path to a guest path before starting the guest')
 
