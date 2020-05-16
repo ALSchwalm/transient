@@ -7,12 +7,12 @@ jobs:
     runs-on: ubuntu-18.04
     container: python:3
     steps:
-    - uses: actions/checkout@v1
+    - uses: actions/checkout@v2
     - name: Format
       run: |
         pip install -e '.[dev]'
         make check-format
-    - uses: actions/checkout@v1
+    - uses: actions/checkout@v2
     - name: Types
       run: |
         make check-types
