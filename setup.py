@@ -19,6 +19,7 @@ setup(
     url='https://github.com/ALSchwalm/transient',
     description='A QEMU wrapper adding vagrant support and shared folders',
     long_description=long_description,
+    long_description_content_type="text/markdown",
     packages=find_packages('.', exclude=["*.tests", "*.tests.*", "tests.*", "tests"]),
     install_requires=[
         "certifi==2020.4.5.1",
