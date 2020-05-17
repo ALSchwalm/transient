@@ -22,17 +22,22 @@ def parse_arguments() -> argparse.Namespace:
     parser.add_argument('-image', metavar='IMG', nargs='+', action='extend',
                         help='Disk image to use (this option can be repeated)')
 
-    parser.add_argument('-ssh-console', '-s', action='store_const', const=True,
+    parser.add_argument('-ssh-console', '-ssh', action='store_const', const=True,
                         default=False, help='Use an ssh connection instead of the serial console')
 
     parser.add_argument('-ssh-user', '-u', default="vagrant", help='User to pass to SSH')
     parser.add_argument('-ssh-bin-name', default="ssh", help='SSH binary to use')
+    parser.add_argument('-ssh-timeout', default=60, type=int,
+                        help='Time to wait for SSH connection before failing')
 
     parser.add_argument('-sync-before', '-b', nargs='+', action='extend',
                         help='Sync a host path to a guest path before starting the guest')
 
     parser.add_argument('-sync-after', '-a', nargs='+', action='extend',
                         help='Sync a guest path to a host path after stopping the guest')
+
+    parser.add_argument('-shared-folder', '-s', nargs='+', action='extend', default=[],
+                        help='Share a host directory with the guest (/path/on/host:/path/on/guest)')
 
     parser.add_argument('qemu_args', metavar='ARG', nargs='*',
                         help='Arguments passed directly to QEMU')
