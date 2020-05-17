@@ -59,6 +59,6 @@ def main() -> None:
 
     logging.debug("Parsed arguments: {}".format(args))
 
-    trans = transient.TransientVm(config=vars(args))
+    trans = transient.TransientVm(config=args)
     returncode = trans.run()
     sys.exit(returncode)

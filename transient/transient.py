@@ -2,6 +2,7 @@ from . import qemu
 from . import image
 from . import ssh
 
+import argparse
 import os
 import pwd
 import socket
@@ -11,23 +12,23 @@ from typing import cast, Optional, List, Dict, Any, Union
 
 class TransientVm:
     store: image.ImageStore
-    config: Dict[str, Any]
+    config: argparse.Namespace
     vm_images: List[image.ImageInfo]
     ssh_port: Optional[int]
 
-    def __init__(self, config: Dict[str, Any]) -> None:
+    def __init__(self, config: argparse.Namespace) -> None:
         self.store = image.ImageStore()
         self.config = config
         self.vm_images = []
         self.ssh_port = None
 
     def __create_images(self, names: List[str]) -> List[image.ImageInfo]:
-        return [self.store.create_vm_image(image_name, self.config["name"], idx)
+        return [self.store.create_vm_image(image_name, self.config.name, idx)
                 for idx, image_name in enumerate(names)]
 
     def __needs_ssh(self) -> bool:
-        return (self.config["ssh_console"] is True or
-                len(self.config["shared_folder"]) > 0)
+        return (self.config.ssh_console is True or
+                len(self.config.shared_folder) > 0)
 
     def __qemu_added_devices(self) -> List[str]:
         new_args = []
@@ -35,7 +36,7 @@ class TransientVm:
             new_args.extend(["-drive", "file={}".format(image.path())])
 
         if self.__needs_ssh():
-            if self.config["ssh_console"] is True:
+            if self.config.ssh_console is True:
                 new_args.append("-nographic")
 
             # Use userspace networking (so no root is needed), and bind
@@ -61,35 +62,35 @@ class TransientVm:
 
         client = ssh.SshClient(host="localhost",
                                port=self.ssh_port,
-                               user=self.config["ssh_user"],
-                               ssh_bin_name=self.config["ssh_bin_name"])
-        return client.connect_wait(timeout=self.config["ssh_timeout"])
+                               user=self.config.ssh_user,
+                               ssh_bin_name=self.config.ssh_bin_name)
+        return client.connect_wait(timeout=self.config.ssh_timeout)
 
     def __current_user(self) -> str:
         return pwd.getpwuid(os.getuid()).pw_name
 
     def run(self) -> int:
         # First, download and setup any required disks
-        self.vm_images = self.__create_images(self.config["image"])
+        self.vm_images = self.__create_images(self.config.image)
 
         added_qemu_args = self.__qemu_added_devices()
-        full_qemu_args = added_qemu_args + self.config["qemu_args"]
+        full_qemu_args = added_qemu_args + self.config.qemu_args
 
-        runner = qemu.QemuRunner(full_qemu_args, quiet=self.config["ssh_console"])
+        runner = qemu.QemuRunner(full_qemu_args, quiet=self.config.ssh_console)
 
         runner.start()
 
-        for shared_spec in self.config["shared_folder"]:
+        for shared_spec in self.config.shared_folder:
             local, remote = shared_spec.split(":")
-            ssh.do_sshfs_mount(timeout=self.config["ssh_timeout"],
+            ssh.do_sshfs_mount(timeout=self.config.ssh_timeout,
                                local_dir=local, remote_dir=remote,
                                host="localhost",
-                               ssh_bin_name=self.config["ssh_bin_name"],
-                               remote_user=self.config["ssh_user"],
+                               ssh_bin_name=self.config.ssh_bin_name,
+                               remote_user=self.config.ssh_user,
                                local_user=self.__current_user(),
                                port=self.ssh_port)
 
-        if self.config["ssh_console"] is True:
+        if self.config.ssh_console is True:
             returncode = self.__connect_ssh()
 
             # Once the ssh connection closes, terminate the VM
