@@ -46,10 +46,9 @@ class ImageStore:
         return "qemu-img"
 
     def __image_info(self, name: str) -> ImageInfo:
-        info = subprocess.run([self.qemu_img_bin,
-                               "info", "-U", "--output=json", name],
-                              capture_output=True, check=True)
-        return ImageInfo(self, json.loads(info.stdout))
+        stdout = subprocess.check_output([self.qemu_img_bin,
+                                          "info", "-U", "--output=json", name])
+        return ImageInfo(self, json.loads(stdout))
 
     def __download_vagrant_info(self, image_name: str) -> Dict[str, Any]:
         url = "https://app.vagrantup.com/api/v1/box/{}".format(image_name)
@@ -143,11 +142,10 @@ class ImageStore:
         logging.info("Creating VM Image '{}' from backing image '{}'".format(
             new_image_path, backing_image.name))
 
-        subprocess.run([self.qemu_img_bin,
-                        "create", "-f", "qcow2",
-                        "-o", "backing_file={}".format(backing_image.name),
-                        new_image_path],
-                       capture_output=True, check=True)
+        subprocess.check_output([self.qemu_img_bin,
+                                 "create", "-f", "qcow2",
+                                 "-o", "backing_file={}".format(backing_image.name),
+                                 new_image_path])
 
         logging.info("VM Image '{}' created".format(new_image_path))
         return self.__image_info(new_image_path)

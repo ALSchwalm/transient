@@ -4,6 +4,7 @@ import sys
 
 from . import transient
 from . import __version__
+from typing import List, Any, Optional
 
 
 def parse_arguments() -> argparse.Namespace:
@@ -21,7 +22,7 @@ def parse_arguments() -> argparse.Namespace:
 
     parser.add_argument('-name', help='Set the vm name', required=True)
 
-    parser.add_argument('-image', metavar='IMG', nargs='+', action='extend',
+    parser.add_argument('-image', metavar='IMG', nargs='+', action=ExtendAction,
                         help='Disk image to use (this option can be repeated)')
 
     parser.add_argument('-ssh-console', '-ssh', action='store_const', const=True,
@@ -31,21 +32,38 @@ def parse_arguments() -> argparse.Namespace:
     parser.add_argument('-ssh-bin-name', default="ssh", help='SSH binary to use')
     parser.add_argument('-ssh-timeout', default=60, type=int,
                         help='Time to wait for SSH connection before failing')
-
     parser.add_argument('-ssh-port', help='Local port the 22 of the guest is forwarded to')
 
-    parser.add_argument('-sync-before', '-b', nargs='+', action='extend',
+    parser.add_argument('-sync-before', '-b', nargs='+', action=ExtendAction,
                         help='Sync a host path to a guest path before starting the guest')
 
-    parser.add_argument('-sync-after', '-a', nargs='+', action='extend',
+    parser.add_argument('-sync-after', '-a', nargs='+', action=ExtendAction,
                         help='Sync a guest path to a host path after stopping the guest')
 
-    parser.add_argument('-shared-folder', '-s', nargs='+', action='extend', default=[],
+    parser.add_argument('-shared-folder', '-s', nargs='+', action=ExtendAction, default=[],
                         help='Share a host directory with the guest (/path/on/host:/path/on/guest)')
 
     parser.add_argument('qemu_args', metavar='ARG', nargs='*',
                         help='Arguments passed directly to QEMU')
     return parser.parse_args()
+
+
+class ExtendAction(argparse._AppendAction):
+    def _copy_items(self, items: List[Any]) -> List[Any]:
+        if items is None:
+            return []
+        import copy
+        return copy.copy(items)
+
+    # The 'extend' action is not available until 3.8. Backport that here
+    # Mostly taken from https://github.com/python/cpython/blob/master/Lib/argparse.py#L1216
+    def __call__(self, parser: argparse.ArgumentParser,
+                 namespace: argparse.Namespace,
+                 values: Any, option_string: Optional[str] = None) -> None:
+        items = getattr(namespace, self.dest, None)
+        items = self._copy_items(items)
+        items.extend(values)
+        setattr(namespace, self.dest, items)
 
 
 def main() -> None:
