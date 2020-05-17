@@ -101,9 +101,11 @@ class ImageStore:
             for block in stream.iter_content(4 * 1024):
                 f.write(block)
 
-        # libvirt boxes _should_ just be tar.gz files with a box.img file
+        # libvirt boxes _should_ just be tar.gz files with a box.img file, but some
+        # images put these in subdirectories. Try to detect that.
         with tarfile.open(box_destination, "r") as tar:
-            in_stream = tar.extractfile("box.img")
+            box_name = [name for name in tar.getnames() if name.endswith("box.img")][0]
+            in_stream = tar.extractfile(box_name)
             out_stream = open(destination, 'wb')
 
             # mypy appears to have a bug in their type definitions. Just cast in_stream
