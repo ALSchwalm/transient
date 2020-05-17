@@ -8,9 +8,23 @@ check: check-format check-types
 check-format:
 	pycodestyle --max-line-length $(MAX_LINE_LENGTH) transient
 
+.PHONY: check-types
 check-types:
 	mypy --strict transient
 
 .PHONY: format
 format:
 	autopep8 -r -i --max-line-length $(MAX_LINE_LENGTH) transient
+
+.PHONY: prep-release
+prep-release:
+	python setup.py sdist bdist_wheel
+	twine check dist/*
+
+.PHONY: upload-test-release
+upload-test-release: prep-release
+	twine upload --repository-url https://test.pypi.org/legacy/ dist/*
+
+.PHONY: upload-release
+upload-release: prep-release
+	twine upload dist/*
