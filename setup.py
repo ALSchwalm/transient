@@ -1,5 +1,6 @@
 #!/usr/bin/env python
 import os
+import re
 from setuptools import setup, find_packages
 
 
@@ -10,11 +11,13 @@ long_description = open(
     )
 ).read()
 
+with open("transient/__init__.py", encoding="utf8") as f:
+    version = re.search(r'__version__ = "(.*?)"', f.read()).group(1)
 
 setup(
     name='transient',
     author='Adam Schwalm',
-    version='0.1',
+    version=version,
     license='LICENSE',
     url='https://github.com/ALSchwalm/transient',
     description='A QEMU wrapper adding vagrant support and shared folders',

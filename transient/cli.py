@@ -3,6 +3,7 @@ import logging
 import sys
 
 from . import transient
+from . import __version__
 
 
 def parse_arguments() -> argparse.Namespace:
@@ -12,7 +13,8 @@ def parse_arguments() -> argparse.Namespace:
                                      description='A simple libvirt/vagrant alternative',
                                      usage="transient [OPTIONS] -- [ARG [ARG ...]]")
 
-    parser.add_argument('-version', action='version', version='%(prog)s 0.1')
+    parser.add_argument('-version', '--version', action='version',
+                        version='%(prog)s {}'.format(__version__))
 
     parser.add_argument('-v', '--verbose', action='count', default=0,
                         help="Verbosity level (repeat to be more verbose)")
