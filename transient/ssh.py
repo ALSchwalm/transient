@@ -1,4 +1,5 @@
 import logging
+import signal
 import subprocess
 import time
 import tempfile
@@ -11,6 +12,7 @@ except ImportError:
     # Try backported to PY<37 `importlib_resources`.
     import importlib_resources as pkg_resources  # type: ignore
 
+from . import linux
 from . import vagrant_keys
 
 SSH_CONNECTION_WAIT_TIME = 3
@@ -87,7 +89,15 @@ class SshClient:
 
         start = time.time()
         while time.time() - start < timeout:
-            proc = subprocess.Popen(command, stdin=stdin, stdout=stdout, stderr=stderr)
+            proc = subprocess.Popen(
+                command,
+                stdin=stdin,
+                stdout=stdout,
+                stderr=stderr,
+
+                # Automatically send SIGTERM to this process when the main Transient
+                # process dies
+                preexec_fn=lambda: linux.set_death_signal(signal.SIGTERM))
 
             try:
                 # Essentially, the logic here is: if a ssh subprocess has _not_
@@ -185,5 +195,5 @@ def do_sshfs_mount(*, timeout: int, local_dir: str, remote_dir: str, host: str,
         # There is a chance the sshfs process hung, so check for the sentinel text
         raw_stdout, _ = conn.communicate()
         stdout = raw_stdout.decode('utf-8')
-        if "TRANSIENT_SSHFS_DONE" not in stdout:
+        if "foobar" not in stdout:
             raise RuntimeError("SSHFS mount timed out")

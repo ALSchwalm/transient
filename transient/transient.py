@@ -15,12 +15,14 @@ class TransientVm:
     config: argparse.Namespace
     vm_images: List[image.ImageInfo]
     ssh_port: Optional[int]
+    qemu_runner: Optional[qemu.QemuRunner]
 
     def __init__(self, config: argparse.Namespace) -> None:
         self.store = image.ImageStore()
         self.config = config
         self.vm_images = []
         self.ssh_port = None
+        self.qemu_runner = None
 
     def __create_images(self, names: List[str]) -> List[image.ImageInfo]:
         return [self.store.create_vm_image(image_name, self.config.name, idx)
@@ -76,9 +78,9 @@ class TransientVm:
         added_qemu_args = self.__qemu_added_devices()
         full_qemu_args = added_qemu_args + self.config.qemu_args
 
-        runner = qemu.QemuRunner(full_qemu_args, quiet=self.config.ssh_console)
+        self.qemu_runner = qemu.QemuRunner(full_qemu_args, quiet=self.config.ssh_console)
 
-        runner.start()
+        self.qemu_runner.start()
 
         for shared_spec in self.config.shared_folder:
             local, remote = shared_spec.split(":")
@@ -94,15 +96,10 @@ class TransientVm:
             returncode = self.__connect_ssh()
 
             # Once the ssh connection closes, terminate the VM
-            # TODO: signal handler to kill the VM even if `transient`
-            # dies unexpectedly.
-            runner.terminate()
-
-            # If sigterm didn't work, kill it
-            runner.kill()
+            self.qemu_runner.terminate()
 
             # Note that for ssh-console, we return the code of the ssh connection,
             # not the qemu process
             return returncode
         else:
-            return runner.wait()
+            return self.qemu_runner.wait()

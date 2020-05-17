@@ -1,7 +1,10 @@
 import logging
+import signal
 import subprocess
 
 from typing import List, Optional
+
+from . import linux
 
 
 class QemuRunner:
@@ -32,10 +35,15 @@ class QemuRunner:
         if self.quiet is True:
             stdio_redirect = subprocess.DEVNULL
 
-        self.proc_handle = subprocess.Popen([self.bin_name] + self.args,
-                                            stdin=stdio_redirect,
-                                            stdout=stdio_redirect,
-                                            stderr=stdio_redirect)
+        self.proc_handle = subprocess.Popen(
+            [self.bin_name] + self.args,
+            stdin=stdio_redirect,
+            stdout=stdio_redirect,
+            stderr=stdio_redirect,
+
+            # Automatically send SIGTERM to this process when the main Transient
+            # process dies
+            preexec_fn=lambda: linux.set_death_signal(signal.SIGTERM))
 
     def wait(self) -> int:
         if self.proc_handle is None:
