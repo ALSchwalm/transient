@@ -41,11 +41,19 @@ class TransientVm:
             if self.config.ssh_console is True:
                 new_args.append("-nographic")
 
-            # Use userspace networking (so no root is needed), and bind
-            # the random localhost port to guest port 22
-            self.ssh_port = self.__allocate_random_port()
-            new_args.extend(["-net", "nic,model=e1000",
-                             "-net", "user,hostfwd=tcp::{}-:22".format(self.ssh_port)])
+            if self.config.ssh_port is None:
+                self.ssh_port = self.__allocate_random_port()
+            else:
+                self.ssh_port = self.config.ssh_port
+
+            # the random localhost port or the user provided port to guest port 22
+            new_args.extend([
+                "-netdev",
+                "user,id=transient-sshdev,hostfwd=tcp::{}-:22".format(self.ssh_port),
+                "-device",
+                "e1000,netdev=transient-sshdev"
+            ])
+
         return new_args
 
     def __allocate_random_port(self) -> int:
