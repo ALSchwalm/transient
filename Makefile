@@ -10,7 +10,7 @@ check-format:
 
 .PHONY: check-types
 check-types:
-	mypy --strict transient
+	mypy transient
 
 .PHONY: format
 format:
@@ -28,3 +28,7 @@ upload-test-release: prep-release
 .PHONY: upload-release
 upload-release: prep-release
 	twine upload dist/*
+
+.PHONY: test
+test:
+	make -C test test

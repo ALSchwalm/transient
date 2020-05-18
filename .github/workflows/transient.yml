@@ -5,14 +5,45 @@ on: [push]
 jobs:
   Check:
     runs-on: ubuntu-18.04
-    container: python:3
+    strategy:
+      matrix:
+        python-version: [3.6, 3.8]
     steps:
     - uses: actions/checkout@v2
-    - name: Format
+    - name: Set up Python ${{ matrix.python-version }}
+      uses: actions/setup-python@v2
+      with:
+        python-version: ${{ matrix.python-version }}
+    - name: Install python dependencies
       run: |
-        pip install -e '.[dev]'
+        python -m pip install --upgrade pip
+        python -m pip install -e '.[dev]'
+    - name: Check Format
+      run: |
         make check-format
-    - uses: actions/checkout@v2
-    - name: Types
+    - name: Check Types
       run: |
         make check-types
+
+  Test:
+    runs-on: ubuntu-18.04
+    strategy:
+      matrix:
+        python-version: [3.6, 3.8]
+    steps:
+    - uses: actions/checkout@v2
+    - name: Install package dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install ssh qemu
+    - name: Set up Python ${{ matrix.python-version }}
+      uses: actions/setup-python@v2
+      with:
+        python-version: ${{ matrix.python-version }}
+    - name: Install python dependencies
+      run: |
+        python -m pip install --upgrade pip
+        python -m pip install -e '.[dev]'
+    - name: Run tests
+      run: |
+        make test

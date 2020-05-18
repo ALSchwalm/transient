@@ -8,9 +8,11 @@ from typing import Optional, List, IO, Any, Union
 
 try:
     import importlib.resources as pkg_resources
+    _package_read_text = pkg_resources.read_text  # type: ignore
 except ImportError:
     # Try backported to PY<37 `importlib_resources`.
     import importlib_resources as pkg_resources  # type: ignore
+    _package_read_text = pkg_resources.read_text  # type: ignore
 
 from . import linux
 from . import vagrant_keys
@@ -55,7 +57,7 @@ class SshClient:
         return "ssh"
 
     def __prepare_builtin_keys(self) -> List[str]:
-        vagrant_priv = pkg_resources.read_text(vagrant_keys, 'vagrant')
+        vagrant_priv = _package_read_text(vagrant_keys, 'vagrant')
         _, vagrant_priv_file = tempfile.mkstemp()
         with open(vagrant_priv_file, "w") as f:
             f.write(vagrant_priv)

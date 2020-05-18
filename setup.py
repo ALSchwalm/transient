@@ -38,10 +38,12 @@ setup(
             "mypy==0.770",
             "mypy-extensions==0.4.3",
             "pycodestyle==2.6.0",
+            "PyHamcrest==2.0.2",
             "typed-ast==1.4.1",
             "typing==3.7.4.1",
             "typing-extensions==3.7.4.2",
-            "zipp==3.1.0"
+            "zipp==3.1.0",
+            "behave==1.2.6"
         ],
     },
     entry_points={
