@@ -30,7 +30,12 @@ class TransientVm:
 
     def __needs_ssh(self) -> bool:
         return (self.config.ssh_console is True or
+                self.config.ssh_command is not None or
                 len(self.config.shared_folder) > 0)
+
+    def __needs_ssh_console(self) -> bool:
+        return (self.config.ssh_console is True or
+                self.config.ssh_command is not None)
 
     def __qemu_added_devices(self) -> List[str]:
         new_args = []
@@ -38,7 +43,7 @@ class TransientVm:
             new_args.extend(["-drive", "file={}".format(image.path())])
 
         if self.__needs_ssh():
-            if self.config.ssh_console is True:
+            if self.__needs_ssh_console():
                 new_args.append("-nographic")
 
             if self.config.ssh_port is None:
@@ -73,7 +78,8 @@ class TransientVm:
         client = ssh.SshClient(host="localhost",
                                port=self.ssh_port,
                                user=self.config.ssh_user,
-                               ssh_bin_name=self.config.ssh_bin_name)
+                               ssh_bin_name=self.config.ssh_bin_name,
+                               command=self.config.ssh_command)
         return client.connect_wait(timeout=self.config.ssh_timeout)
 
     def __current_user(self) -> str:
@@ -86,7 +92,7 @@ class TransientVm:
         added_qemu_args = self.__qemu_added_devices()
         full_qemu_args = added_qemu_args + self.config.qemu_args
 
-        self.qemu_runner = qemu.QemuRunner(full_qemu_args, quiet=self.config.ssh_console)
+        self.qemu_runner = qemu.QemuRunner(full_qemu_args, quiet=self.__needs_ssh_console())
 
         self.qemu_runner.start()
 
@@ -100,7 +106,7 @@ class TransientVm:
                                local_user=self.__current_user(),
                                port=self.ssh_port)
 
-        if self.config.ssh_console is True:
+        if self.__needs_ssh_console():
             returncode = self.__connect_ssh()
 
             # Once the ssh connection closes, terminate the VM
