@@ -90,6 +90,9 @@ class TransientVm:
         # First, download and setup any required disks
         self.vm_images = self.__create_images(self.config.image)
 
+        if self.config.prepare_only is True:
+            return 0
+
         added_qemu_args = self.__qemu_added_devices()
         full_qemu_args = added_qemu_args + self.config.qemu_args
 

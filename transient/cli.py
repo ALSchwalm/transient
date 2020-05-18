@@ -47,6 +47,9 @@ def parse_arguments() -> argparse.Namespace:
     parser.add_argument('-shared-folder', '-s', nargs='+', action=ExtendAction, default=[],
                         help='Share a host directory with the guest (/path/on/host:/path/on/guest)')
 
+    parser.add_argument('-prepare-only', action='store_const', const=True, default=False,
+                        help='Only download/create vm disks. Do not start the vm')
+
     parser.add_argument('qemu_args', metavar='ARG', nargs='*',
                         help='Arguments passed directly to QEMU')
     return parser.parse_args()

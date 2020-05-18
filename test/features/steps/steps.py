@@ -1,3 +1,4 @@
+import os
 import subprocess
 from behave import *
 from hamcrest import *
@@ -20,6 +21,15 @@ def build_command(context):
 
     if "ssh-console" in config:
         command.extend(["-ssh-console"])
+
+    if "prepare-only" in config:
+        command.extend(["-prepare-only"])
+
+    if "image-frontend" in config:
+        command.extend(["-image-frontend", config["image-frontend"]])
+
+    if "image-backend" in config:
+        command.extend(["-image-backend", config["image-backend"]])
 
     return command
 
@@ -58,7 +68,20 @@ def step_impl(context):
 def step_impl(context, command):
     context.vm_config["ssh-command"] = command
 
+@given('the vm is prepare-only')
+def step_impl(context):
+    context.vm_config["prepare-only"] = True
+
+@given('a frontend "{frontend}"')
+def step_impl(context, frontend):
+    context.vm_config["image-frontend"] = frontend
+
+@given('a backend "{backend}"')
+def step_impl(context, backend):
+    context.vm_config["image-backend"] = backend
+
 @when('the vm runs to completion')
+@when('the transient command is run')
 def step_impl(context):
     run_vm(context)
     wait_on_vm(context)
@@ -84,3 +107,13 @@ def step_impl(context, code):
 @then('stdout contains "{expected_stdout}"')
 def step_impl(context, expected_stdout):
     assert_that(context.stdout, contains_string(expected_stdout))
+
+@then('the file "{name}" is in the backend')
+def step_impl(context, name):
+    items = os.listdir(context.vm_config["image-backend"])
+    assert_that(items, has_item(name))
+
+@then('the file "{name}" is in the frontend')
+def step_impl(context, name):
+    items = os.listdir(context.vm_config["image-frontend"])
+    assert_that(items, has_item(name))
