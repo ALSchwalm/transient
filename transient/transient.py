@@ -18,7 +18,8 @@ class TransientVm:
     qemu_runner: Optional[qemu.QemuRunner]
 
     def __init__(self, config: argparse.Namespace) -> None:
-        self.store = image.ImageStore()
+        self.store = image.ImageStore(backend_dir=config.image_backend,
+                                      frontend_dir=config.image_frontend)
         self.config = config
         self.vm_images = []
         self.ssh_port = None
@@ -40,7 +41,7 @@ class TransientVm:
     def __qemu_added_devices(self) -> List[str]:
         new_args = []
         for image in self.vm_images:
-            new_args.extend(["-drive", "file={}".format(image.path())])
+            new_args.extend(["-drive", "file={}".format(image.path)])
 
         if self.__needs_ssh():
             if self.__needs_ssh_console():

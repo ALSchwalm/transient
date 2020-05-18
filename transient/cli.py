@@ -24,6 +24,9 @@ def parse_arguments() -> argparse.Namespace:
 
     parser.add_argument('-image', metavar='IMG', nargs='+', action=ExtendAction,
                         help='Disk image to use (this option can be repeated)')
+    parser.add_argument('-image-frontend', help='The location to place per-vm disk images')
+    parser.add_argument('-image-backend',
+                        help='The location to place the shared, read-only backing disk images')
 
     parser.add_argument('-ssh-console', '-ssh', action='store_const', const=True,
                         default=False, help='Use an ssh connection instead of the serial console')
