@@ -1,5 +1,6 @@
 import json
 import logging
+import fcntl
 import os
 import requests
 import shutil
@@ -123,26 +124,74 @@ class ImageStore:
 
         box_url = self.__vagrant_box_url(version, box_info)
 
-        stream = requests.get(box_url, allow_redirects=True)
-
         box_destination = destination + ".box"
-        with open(box_destination, 'wb') as f:
-            for block in stream.iter_content(4 * 1024):
-                f.write(block)
+
+        # By default, python 'open' call will truncate writable files. We can't allow that
+        # as we don't yet hold the flock (and there is no way to open _and_ flock in one
+        # call). So we use os.open to avoid the truncate.
+        box_fd = os.open(box_destination, os.O_RDWR | os.O_CREAT)
+
+        logging.debug("Attempting to acquire lock of '{}'".format(box_destination))
+
+        # This will block if another transient process is doing the download. The lock must
+        # be held until after the point where we atomically rename the extracted item to
+        # its final name.
+        try:
+            # First attempt to acquire the lock non-blocking
+            fcntl.flock(box_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except OSError:
+            # OSError indicates the lock is held by someone else. Print a notice and then
+            # block.
+            logging.info("Download in progress from another process. Waiting.")
+            fcntl.flock(box_fd, fcntl.LOCK_EX)
+
+        logging.debug("Lock of '{}' now held".format(box_destination))
+
+        # We now hold the lock. Either another process started the download/extraction
+        # and died (or never started at all) or they completed. If the final file exists,
+        # the must have completed successfully so just return.
+        if os.path.exists(destination):
+            logging.info("Download completed by another processes. Skipping.")
+            os.close(box_fd)
+            return
+
+        stream = requests.get(box_url, allow_redirects=True)
+        logging.debug("Response headers: {}".format(stream.headers))
+
+        stream.raise_for_status()
+
+        # Convenience wrapper around the fd
+        box_file = os.fdopen(box_fd, 'wb+')
+
+        # Do the actual download
+        for block in stream.iter_content(4 * 1024):
+            box_file.write(block)
+        box_file.flush()
+        box_file.seek(0)
+
+        logging.info("Download completed. Starting image extraction.")
 
         # libvirt boxes _should_ just be tar.gz files with a box.img file, but some
         # images put these in subdirectories. Try to detect that.
-        with tarfile.open(box_destination, "r") as tar:
+        part_destination = destination + ".part"
+        with tarfile.open(fileobj=box_file, mode="r") as tar:
             box_name = [name for name in tar.getnames() if name.endswith("box.img")][0]
             in_stream = tar.extractfile(box_name)
-            out_stream = open(destination, 'wb')
+            out_stream = open(part_destination, 'wb')
 
             # mypy appears to have a bug in their type definitions. Just cast in_stream
             # to any to convince it that this is ok.
             shutil.copyfileobj(cast(Any, in_stream), out_stream)
 
+        logging.info("Image extraction completed.")
+
+        # Now that the entire file is extracted, atomically move it to the destination.
+        # This avoids issues where a process was killed in the middle of extracting.
+        os.rename(part_destination, destination)
+
         # And clean up the box
         os.remove(box_destination)
+        box_file.close()
 
     def retrieve_image(self, image_name: str) -> ImageInfo:
         pathsafe_name = self.__pathsafe_image_name(image_name)
