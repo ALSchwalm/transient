@@ -172,7 +172,7 @@ def do_sshfs_mount(*, timeout: int, local_dir: str, remote_dir: str, host: str,
         # terminate the connection.
         #
         # See http://www.snailbook.com/faq/background-jobs.auto.html for some more info.
-        _, stderr = conn.communicate(input="""
+        _, raw_stderr = conn.communicate(input="""
           set -e
           {sshfs_command}
           echo TRANSIENT_SSHFS_DONE
@@ -182,7 +182,7 @@ def do_sshfs_mount(*, timeout: int, local_dir: str, remote_dir: str, host: str,
         # On some platforms, maybe this does actually terminate. If it does,
         # then just return
         if conn.returncode != 0:
-            raise RuntimeError("SSHFS mount failed with: {}".format(stderr.decode('utf-8')))
+            raise RuntimeError("SSHFS mount failed with: {}".format(raw_stderr.decode('utf-8')))
         else:
             return
     except subprocess.TimeoutExpired:
@@ -193,7 +193,8 @@ def do_sshfs_mount(*, timeout: int, local_dir: str, remote_dir: str, host: str,
         conn.terminate()
 
         # There is a chance the sshfs process hung, so check for the sentinel text
-        raw_stdout, _ = conn.communicate()
+        raw_stdout, raw_stderr = conn.communicate()
         stdout = raw_stdout.decode('utf-8')
-        if "foobar" not in stdout:
-            raise RuntimeError("SSHFS mount timed out")
+        stderr = raw_stderr.decode('utf-8')
+        if "TRANSIENT_SSHFS_DONE" not in stdout:
+            raise RuntimeError("SSHFS mount timed out: {}".format(stderr))
