@@ -25,24 +25,16 @@ setup(
     long_description_content_type="text/markdown",
     packages=find_packages('.', exclude=["*.tests", "*.tests.*", "tests.*", "tests"]),
     install_requires=[
-        "certifi==2020.4.5.1",
-        "chardet==3.0.4",
-        "idna==2.9",
         "importlib-resources==1.5.0",
-        "requests==2.23.0",
-        "urllib3==1.25.9"
+        "progressbar2==3.51.3",
+        "requests==2.23.0"
     ],
     extras_require={
         "dev": [
-            "autopep8==1.5.2",
             "mypy==0.770",
-            "mypy-extensions==0.4.3",
             "pycodestyle==2.6.0",
             "PyHamcrest==2.0.2",
-            "typed-ast==1.4.1",
             "typing==3.7.4.1",
-            "typing-extensions==3.7.4.2",
-            "zipp==3.1.0",
             "behave==1.2.6"
         ],
     },

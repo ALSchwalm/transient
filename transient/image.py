@@ -1,15 +1,17 @@
 import json
 import logging
 import fcntl
+import itertools
 import os
+import progressbar  # type: ignore
 import requests
-import shutil
 import subprocess
 import tarfile
 
 from typing import cast, Optional, List, Dict, Any, Union
 
 _FALLBACK_BACKEND_PATH = "/tmp"
+_BLOCK_TRANSFER_SIZE = 64 * 1024  # 64KiB
 
 
 class ImageInfo:
@@ -48,6 +50,21 @@ class ImageStore:
         if not os.path.exists(self.frontend):
             logging.debug("Creating missing ImageStore frontend at '{}'".format(self.frontend))
             os.makedirs(self.frontend, exist_ok=True)
+
+    def __prepare_file_operation_bar(self, filesize):
+        return progressbar.ProgressBar(
+            maxval=filesize,
+            widgets=[
+                progressbar.Percentage(),
+                ' ',
+                progressbar.Bar(),
+                ' ',
+                progressbar.FileTransferSpeed(),
+                ' | ',
+                progressbar.DataSize(),
+                ' | ',
+                progressbar.ETA(),
+            ])
 
     def __default_backend_dir(self) -> str:
         env_specified = os.getenv("TRANSIENT_BACKEND")
@@ -124,6 +141,8 @@ class ImageStore:
 
         box_url = self.__vagrant_box_url(version, box_info)
 
+        print("Pulling from vagranthub: {}:{}".format(box_name, version))
+
         box_destination = destination + ".box"
 
         # By default, python 'open' call will truncate writable files. We can't allow that
@@ -155,33 +174,47 @@ class ImageStore:
             os.close(box_fd)
             return
 
-        stream = requests.get(box_url, allow_redirects=True)
+        stream = requests.get(box_url, allow_redirects=True, stream=True)
         logging.debug("Response headers: {}".format(stream.headers))
 
         stream.raise_for_status()
+        total_length = progressbar.UnknownLength
+        if "content-length" in stream.headers:
+            total_length = int(stream.headers["content-length"])
 
         # Convenience wrapper around the fd
         box_file = os.fdopen(box_fd, 'wb+')
 
         # Do the actual download
-        for block in stream.iter_content(4 * 1024):
+        bar = self.__prepare_file_operation_bar(total_length)
+        for idx, block in enumerate(stream.iter_content(_BLOCK_TRANSFER_SIZE)):
             box_file.write(block)
+            bar.update(idx * _BLOCK_TRANSFER_SIZE)
+        bar.finish()
         box_file.flush()
         box_file.seek(0)
 
-        logging.info("Download completed. Starting image extraction.")
+        print("Download completed. Starting image extraction.")
 
         # libvirt boxes _should_ just be tar.gz files with a box.img file, but some
         # images put these in subdirectories. Try to detect that.
         part_destination = destination + ".part"
         with tarfile.open(fileobj=box_file, mode="r") as tar:
-            box_name = [name for name in tar.getnames() if name.endswith("box.img")][0]
-            in_stream = tar.extractfile(box_name)
+            image_info = [info for info in tar.getmembers()
+                          if info.name.endswith("box.img")][0]
+            in_stream = tar.extractfile(image_info.name)
+            assert(in_stream is not None)
+
             out_stream = open(part_destination, 'wb')
 
-            # mypy appears to have a bug in their type definitions. Just cast in_stream
-            # to any to convince it that this is ok.
-            shutil.copyfileobj(cast(Any, in_stream), out_stream)
+            bar = self.__prepare_file_operation_bar(image_info.size)
+            for idx in itertools.count():
+                block = in_stream.read(_BLOCK_TRANSFER_SIZE)
+                if not block:
+                    break
+                out_stream.write(block)
+                bar.update(idx * _BLOCK_TRANSFER_SIZE)
+            bar.finish()
 
         logging.info("Image extraction completed.")
 
@@ -201,7 +234,7 @@ class ImageStore:
             logging.info("Image '{}' already exists. Skipping download".format(image_name))
             return self.__image_info(destination)
 
-        logging.info("Downloading image: {}".format(image_name))
+        print("Unable to find image '{}' in backend".format(image_name))
 
         # For now, we only support vagrant images
         self.__download_vagrant_image(image_name, destination)
