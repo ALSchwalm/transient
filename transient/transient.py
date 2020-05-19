@@ -1,6 +1,7 @@
 from . import qemu
 from . import image
 from . import ssh
+from . import sshfs
 
 import argparse
 import os
@@ -14,7 +15,7 @@ class TransientVm:
     store: image.ImageStore
     config: argparse.Namespace
     vm_images: List[image.ImageInfo]
-    ssh_port: Optional[int]
+    ssh_config: Optional[ssh.SshConfig]
     qemu_runner: Optional[qemu.QemuRunner]
 
     def __init__(self, config: argparse.Namespace) -> None:
@@ -22,7 +23,7 @@ class TransientVm:
                                       frontend_dir=config.image_frontend)
         self.config = config
         self.vm_images = []
-        self.ssh_port = None
+        self.ssh_config = None
         self.qemu_runner = None
 
     def __create_images(self, names: List[str]) -> List[image.ImageInfo]:
@@ -48,14 +49,19 @@ class TransientVm:
                 new_args.append("-nographic")
 
             if self.config.ssh_port is None:
-                self.ssh_port = self.__allocate_random_port()
+                ssh_port = self.__allocate_random_port()
             else:
-                self.ssh_port = self.config.ssh_port
+                ssh_port = self.config.ssh_port
+
+            self.ssh_config = ssh.SshConfig(host="localhost",
+                                            port=ssh_port,
+                                            user=self.config.ssh_user,
+                                            ssh_bin_name=self.config.ssh_bin_name)
 
             # the random localhost port or the user provided port to guest port 22
             new_args.extend([
                 "-netdev",
-                "user,id=transient-sshdev,hostfwd=tcp::{}-:22".format(self.ssh_port),
+                "user,id=transient-sshdev,hostfwd=tcp::{}-:22".format(ssh_port),
                 "-device",
                 "e1000,netdev=transient-sshdev"
             ])
@@ -74,13 +80,8 @@ class TransientVm:
         return cast(int, addr[1])
 
     def __connect_ssh(self) -> int:
-        assert(self.ssh_port is not None)
-
-        client = ssh.SshClient(host="localhost",
-                               port=self.ssh_port,
-                               user=self.config.ssh_user,
-                               ssh_bin_name=self.config.ssh_bin_name,
-                               command=self.config.ssh_command)
+        assert(self.ssh_config is not None)
+        client = ssh.SshClient(config=self.ssh_config, command=self.config.ssh_command)
         return client.connect_wait(timeout=self.config.ssh_timeout)
 
     def __current_user(self) -> str:
@@ -93,6 +94,8 @@ class TransientVm:
         if self.config.prepare_only is True:
             return 0
 
+        print("Finished preparation. Starting virtual machine")
+
         added_qemu_args = self.__qemu_added_devices()
         full_qemu_args = added_qemu_args + self.config.qemu_args
 
@@ -101,14 +104,12 @@ class TransientVm:
         self.qemu_runner.start()
 
         for shared_spec in self.config.shared_folder:
+            assert(self.ssh_config is not None)
             local, remote = shared_spec.split(":")
-            ssh.do_sshfs_mount(timeout=self.config.ssh_timeout,
-                               local_dir=local, remote_dir=remote,
-                               host="localhost",
-                               ssh_bin_name=self.config.ssh_bin_name,
-                               remote_user=self.config.ssh_user,
-                               local_user=self.__current_user(),
-                               port=self.ssh_port)
+            sshfs.do_sshfs_mount(timeout=self.config.ssh_timeout,
+                                 ssh_config=self.ssh_config,
+                                 local_dir=local, remote_dir=remote,
+                                 local_user=self.__current_user())
 
         if self.__needs_ssh_console():
             returncode = self.__connect_ssh()
