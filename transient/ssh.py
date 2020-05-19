@@ -63,7 +63,7 @@ class SshClient:
             f.write(vagrant_priv)
         return [vagrant_priv_file]
 
-    def __prepare_command(self) -> List[str]:
+    def __prepare_ssh_command(self, user_cmd: Optional[str]) -> List[str]:
         if self.user is not None:
             host = "{}@{}".format(self.user, self.host)
         else:
@@ -76,59 +76,73 @@ class SshClient:
             args.extend(["-i", key])
 
         command = [self.ssh_bin_name] + args + [host]
-        if self.command is not None:
-            command.append(self.command)
+        if user_cmd is not None:
+            command.append(user_cmd)
 
         return command
 
     def __timed_connection(self, timeout: int,
-                           stdin: Optional[_FILE] = None,
-                           stdout: Optional[_FILE] = None,
-                           stderr: Optional[_FILE] = None) -> 'subprocess.Popen[bytes]':
-        command = self.__prepare_command()
+                           ssh_stdin: Optional[_FILE] = None,
+                           ssh_stdout: Optional[_FILE] = None,
+                           ssh_stderr: Optional[_FILE] = None) -> 'subprocess.Popen[bytes]':
+        probe_command = self.__prepare_ssh_command("exit")
+        real_command = self.__prepare_ssh_command(self.command)
 
-        logging.info("Connecting ssh using command '{}'".format(" ".join(command)))
+        logging.info("Probing SSH using command '{}'".format(" ".join(probe_command)))
 
         start = time.time()
         while time.time() - start < timeout:
+            # This process is just used to determine if SSH is available. It is
+            # not connected to the requested pipes.
             proc = subprocess.Popen(
-                command,
-                stdin=stdin,
-                stdout=stdout,
-                stderr=stderr,
+                probe_command,
+                stdin=subprocess.PIPE,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
 
                 # Automatically send SIGTERM to this process when the main Transient
                 # process dies
                 preexec_fn=lambda: linux.set_death_signal(signal.SIGTERM))
 
-            try:
-                # Essentially, the logic here is: if a ssh subprocess has _not_
-                # exited after SSH_CONNECTION_WAIT_TIME seconds, then it must
-                # be working. This is ensured by the fact that we pass the ConnectTimeout
-                # option.
-                returncode = proc.wait(SSH_CONNECTION_WAIT_TIME)
+            # We set the ConnectTimeout timeout option to less than SSH_CONNECTION_WAIT_TIME,
+            # therefore, we don't need to catch any timeouts from this. If a connection
+            # takes longer than the wait time, SSH will kill it. Once the connection is
+            # established, we are only running 'exit'.
+            returncode = proc.wait(SSH_CONNECTION_WAIT_TIME)
 
-                # From the man pages: "ssh exits with the exit status of the
-                # remote command or with 255 if an error occurred."
-                if returncode == 255:
-                    # In many cases, the command will fail quickly. Avoid spamming tries
-                    time.sleep(SSH_CONNECTION_TIME_BETWEEN_TRIES)
-                    continue
-                elif returncode == 0:
-                    # It is possible we connected and the provided command completed within
-                    # SSH_CONNECTION_WAIT_TIME seconds. Don't error in this case
-                    return proc
-                else:
-                    # If the process exited within SSH_CONNECTION_WAIT_TIME seconds with
-                    # any other return code, that's an exception.
-                    raise RuntimeError("ssh connection failed with return code: {}".format(
-                        returncode))
-            except subprocess.TimeoutExpired:
-                # If the process does _not_ terminate within SSH_CONNECTION_WAIT_TIME
-                # seconds, then it must have connected.
+            # From the man pages: "ssh exits with the exit status of the
+            # remote command or with 255 if an error occurred."
+            if returncode == 255:
+                _, raw_stderr = proc.communicate()
+                stderr = raw_stderr.decode("utf-8").strip()
+                logging.info("SSH connection failed: {}".format(stderr))
+                # In many cases, the command will fail quickly. Avoid spamming tries
+                time.sleep(SSH_CONNECTION_TIME_BETWEEN_TRIES)
+                continue
+            elif returncode == 0:
+                # The command exited quickly which _should_ indicate that ssh is now
+                # available in the guest (as the 'command' here is just 'exit'). Now
+                # kill this connection and establish another that's connected to the
+                # requested stdout/stderr
+                proc.terminate()
+
+                logging.info("Connecting to SSH using command '{}'".format(
+                    " ".join(real_command)))
+
+                proc = subprocess.Popen(
+                    real_command,
+                    stdin=ssh_stdin,
+                    stdout=ssh_stdout,
+                    stderr=ssh_stderr,
+                    preexec_fn=lambda: linux.set_death_signal(signal.SIGTERM))
                 return proc
+            else:
+                # If the process exited within SSH_CONNECTION_WAIT_TIME seconds with
+                # any other return code, that's an exception.
+                raise RuntimeError("ssh connection failed with return code: {}".format(
+                    returncode))
         raise RuntimeError("Failed to connect with command '{}' after {} seconds".format(
-            command, timeout))
+            probe_command, timeout))
 
     def connect_wait(self, timeout: int) -> int:
         conn = self.__timed_connection(timeout)
@@ -136,8 +150,10 @@ class SshClient:
         return conn.returncode
 
     def connect_piped(self, timeout: int) -> 'subprocess.Popen[bytes]':
-        return self.__timed_connection(timeout, stdin=subprocess.PIPE,
-                                       stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        return self.__timed_connection(timeout,
+                                       ssh_stdin=subprocess.PIPE,
+                                       ssh_stdout=subprocess.PIPE,
+                                       ssh_stderr=subprocess.PIPE)
 
 
 def do_sshfs_mount(*, timeout: int, local_dir: str, remote_dir: str, host: str,
