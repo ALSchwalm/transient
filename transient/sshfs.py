@@ -7,6 +7,8 @@ from typing import Optional, List
 from . import ssh
 
 _SSHFS_MAX_RUN_TIME = 2
+_SSHFS_MAX_RUN_TIME_SLOW = 20
+
 _RHEL_PROVISION_SCRIPT = b"""
   set -e
   sudo yum install -y epel-release
@@ -113,16 +115,16 @@ def provision_system(timeout: int, ssh_config: ssh.SshConfig) -> bool:
     return False
 
 
-def do_sshfs_mount(*, timeout: int, local_dir: str, remote_dir: str,
+def do_sshfs_mount(*, connect_timeout: int, local_dir: str, remote_dir: str,
                    local_user: str,  local_password: Optional[str] = None,
-                   ssh_config: ssh.SshConfig,
-                   is_provisioned: bool = False) -> None:
+                   ssh_config: ssh.SshConfig, is_provisioned: bool = False,
+                   is_slow: bool = False) -> None:
 
     sshfs_config = ssh_config.override(
         args=["-A", "-T", "-o", "LogLevel=ERROR",
               ] + ssh_config.args)
     client = ssh.SshClient(sshfs_config)
-    conn = client.connect_piped(timeout=timeout)
+    conn = client.connect_piped(timeout=connect_timeout)
 
     try:
         sshfs_options = "-o StrictHostKeyChecking=no -o allow_other"
@@ -130,6 +132,10 @@ def do_sshfs_mount(*, timeout: int, local_dir: str, remote_dir: str,
             options=sshfs_options, user=local_user, local=local_dir, remote=remote_dir)
 
         logging.info("Sending sshfs mount command '{}'".format(sshfs_command))
+
+        sshfs_timeout = _SSHFS_MAX_RUN_TIME
+        if is_slow is True:
+             sshfs_timeout = _SSHFS_MAX_RUN_TIME_SLOW
 
         # This is somewhat gnarly. The core of the issue is that sshfs is a FUSE mount,
         # so it runs as a process (that gets backgrounded by default). SSH won't close
@@ -151,7 +157,7 @@ def do_sshfs_mount(*, timeout: int, local_dir: str, remote_dir: str,
           {sshfs_command}
           echo TRANSIENT_SSHFS_DONE
           exit
-        """.format(sshfs_command=sshfs_command).encode('utf-8'), timeout=_SSHFS_MAX_RUN_TIME)
+        """.format(sshfs_command=sshfs_command).encode('utf-8'), timeout=sshfs_timeout)
 
         # Ensure returncode is set
         conn.poll()
@@ -173,7 +179,7 @@ def do_sshfs_mount(*, timeout: int, local_dir: str, remote_dir: str,
         success = provision_system(timeout, ssh_config)
         if success is True:
             # Try the sshfs again once we have provisioned the sytem
-            do_sshfs_mount(timeout=timeout, local_dir=local_dir,
+            do_sshfs_mount(connect_timeout=connect_timeout, local_dir=local_dir,
                            remote_dir=remote_dir, local_user=local_user,
                            local_password=local_password, ssh_config=ssh_config,
                            is_provisioned=True)
@@ -192,4 +198,15 @@ def do_sshfs_mount(*, timeout: int, local_dir: str, remote_dir: str,
         stdout = raw_stdout.decode('utf-8')
         stderr = raw_stderr.decode('utf-8')
         if "TRANSIENT_SSHFS_DONE" not in stdout:
-            raise RuntimeError("SSHFS mount timed out: {}".format(stderr))
+            if is_slow:
+                # We timed out without getting to the 'echo' in the script, even with
+                # extra time. Just give up.
+                raise RuntimeError("SSHFS mount timed out: {}".format(stderr))
+            else:
+                logging.warning("sshfs mount did not complete. Trying with longer timeout")
+                # Try again with a longer timeout. The system may just be extremely
+                # slow (like qemu with 1 core and no kvm acceleration)
+                do_sshfs_mount(connect_timeout=connect_timeout, local_dir=local_dir,
+                               remote_dir=remote_dir, local_user=local_user,
+                               local_password=local_password, ssh_config=ssh_config,
+                               is_slow=True)

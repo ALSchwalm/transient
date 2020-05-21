@@ -18,8 +18,9 @@ except ImportError:
 from . import linux
 from . import vagrant_keys
 
-SSH_CONNECTION_WAIT_TIME = 3
+SSH_CONNECTION_WAIT_TIME = 30
 SSH_CONNECTION_TIME_BETWEEN_TRIES = 2
+SSH_DEFAULT_CONNECT_TIMEOUT = 3
 
 # From the typeshed Popen definitions
 _FILE = Union[None, int, IO[Any]]
@@ -50,7 +51,7 @@ class SshConfig:
         return ["-o", "StrictHostKeyChecking=no",
                 "-o", "UserKnownHostsFile=/dev/null",
                 "-o", "batchMode=yes",
-                "-o", "ConnectTimeout={}".format(SSH_CONNECTION_WAIT_TIME-1)]
+                "-o", "ConnectTimeout={}".format(SSH_DEFAULT_CONNECT_TIMEOUT)]
 
     def __find_ssh_bin_name(self) -> str:
         return "ssh"
@@ -99,7 +100,7 @@ class SshClient:
         self.prepared_keys = [vagrant_priv_file]
         return self.prepared_keys
 
-    def __prepare_ssh_command(self, user_cmd: Optional[str]) -> List[str]:
+    def __prepare_ssh_command(self, user_cmd: Optional[str] = None) -> List[str]:
         if self.config.user is not None:
             host = "{}@{}".format(self.config.user, self.config.host)
         else:
@@ -121,18 +122,20 @@ class SshClient:
                            ssh_stdin: Optional[_FILE] = None,
                            ssh_stdout: Optional[_FILE] = None,
                            ssh_stderr: Optional[_FILE] = None) -> 'subprocess.Popen[bytes]':
-        probe_command = self.__prepare_ssh_command("exit")
+        probe_command = self.__prepare_ssh_command()
         real_command = self.__prepare_ssh_command(self.command)
 
-        logging.info("Probing SSH using command '{}'".format(" ".join(probe_command)))
+        logging.info("Probing SSH using '{}'".format(" ".join(probe_command)))
 
         start = time.time()
         while time.time() - start < timeout:
             # This process is just used to determine if SSH is available. It is
-            # not connected to the requested pipes.
+            # not connected to the requested pipes. Because stdin is connected to
+            # /dev/null the connection will be closed automatically (almost) right
+            # after it is established, with return code 0.
             proc = subprocess.Popen(
                 probe_command,
-                stdin=subprocess.PIPE,
+                stdin=subprocess.DEVNULL,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
 
@@ -140,10 +143,8 @@ class SshClient:
                 # process dies
                 preexec_fn=lambda: linux.set_death_signal(signal.SIGTERM))
 
-            # We set the ConnectTimeout timeout option to less than SSH_CONNECTION_WAIT_TIME,
-            # therefore, we don't need to catch any timeouts from this. If a connection
-            # takes longer than the wait time, SSH will kill it. Once the connection is
-            # established, we are only running 'exit'.
+            # Wait for quite a while, as slow systems (like qemu with a single
+            # core and no '-enable-kvm') can take a long time
             returncode = proc.wait(SSH_CONNECTION_WAIT_TIME)
 
             # From the man pages: "ssh exits with the exit status of the
@@ -156,10 +157,9 @@ class SshClient:
                 time.sleep(SSH_CONNECTION_TIME_BETWEEN_TRIES)
                 continue
             elif returncode == 0:
-                # The command exited quickly which _should_ indicate that ssh is now
-                # available in the guest (as the 'command' here is just 'exit'). Now
-                # kill this connection and establish another that's connected to the
-                # requested stdout/stderr
+                # The connection closed with code 0, which should indicate that ssh is
+                # now available in the guest. Now kill this connection and establish
+                # another that's connected to the requested stdout/stderr
                 proc.terminate()
 
                 logging.info("Connecting to SSH using command '{}'".format(

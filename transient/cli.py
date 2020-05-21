@@ -33,7 +33,7 @@ def parse_arguments() -> argparse.Namespace:
 
     parser.add_argument('-ssh-user', '-u', default="vagrant", help='User to pass to SSH')
     parser.add_argument('-ssh-bin-name', default="ssh", help='SSH binary to use')
-    parser.add_argument('-ssh-timeout', default=60, type=int,
+    parser.add_argument('-ssh-timeout', default=90, type=int,
                         help='Time to wait for SSH connection before failing')
     parser.add_argument('-ssh-port', help='Local port the 22 of the guest is forwarded to')
     parser.add_argument('-ssh-command', '-cmd', help='Run an ssh command instead of a console')
