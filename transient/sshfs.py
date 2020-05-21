@@ -8,6 +8,8 @@ from . import ssh
 
 _SSHFS_MAX_RUN_TIME = 2
 _SSHFS_MAX_RUN_TIME_SLOW = 20
+_PROVISION_TIME = 120
+_PROVISION_TIME_SLOW = 300
 
 _RHEL_PROVISION_SCRIPT = b"""
   set -e
@@ -40,14 +42,17 @@ def _parse_os_release(contents: str) -> List[str]:
 
 
 def _do_provision(timeout: int, provision_config: ssh.SshConfig,
-                  system_type: str, script: bytes) -> bool:
+                  system_type: str, script: bytes, is_slow: bool) -> bool:
     client = ssh.SshClient(config=provision_config)
     conn = client.connect_piped(timeout)
 
     print("Starting provision of {} type system".format(system_type))
 
     try:
-        raw_stdout, raw_stderr = conn.communicate(script, timeout=timeout)
+        provision_timeout = _PROVISION_TIME
+        if is_slow is True:
+            provision_timeout = _PROVISION_TIME_SLOW
+        raw_stdout, raw_stderr = conn.communicate(script, timeout=provision_timeout)
         returncode = conn.poll()
 
         stdout = raw_stdout.decode("utf-8").strip()
@@ -78,7 +83,7 @@ def _should_provision(is_provisioned: bool, error: str) -> bool:
         return "sshfs: command not found" in error
 
 
-def provision_system(timeout: int, ssh_config: ssh.SshConfig) -> bool:
+def provision_system(timeout: int, ssh_config: ssh.SshConfig, is_slow: bool) -> bool:
     provision_config = ssh_config.override(
         args=["-T", "-o", "LogLevel=ERROR"] + ssh_config.args)
 
@@ -111,7 +116,7 @@ def provision_system(timeout: int, ssh_config: ssh.SshConfig) -> bool:
 
     if script is not None:
         assert(candidate is not None)
-        return _do_provision(timeout, provision_config, candidate, script)
+        return _do_provision(timeout, provision_config, candidate, script, is_slow)
     return False
 
 
@@ -135,7 +140,7 @@ def do_sshfs_mount(*, connect_timeout: int, local_dir: str, remote_dir: str,
 
         sshfs_timeout = _SSHFS_MAX_RUN_TIME
         if is_slow is True:
-             sshfs_timeout = _SSHFS_MAX_RUN_TIME_SLOW
+            sshfs_timeout = _SSHFS_MAX_RUN_TIME_SLOW
 
         # This is somewhat gnarly. The core of the issue is that sshfs is a FUSE mount,
         # so it runs as a process (that gets backgrounded by default). SSH won't close
@@ -176,7 +181,7 @@ def do_sshfs_mount(*, connect_timeout: int, local_dir: str, remote_dir: str,
             raise RuntimeError("SSHFS mount failed with: {}".format(stderr))
 
         # If so, try to provision it
-        success = provision_system(timeout, ssh_config)
+        success = provision_system(connect_timeout, ssh_config, is_slow)
         if success is True:
             # Try the sshfs again once we have provisioned the sytem
             do_sshfs_mount(connect_timeout=connect_timeout, local_dir=local_dir,
