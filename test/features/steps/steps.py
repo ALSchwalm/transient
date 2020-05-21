@@ -4,7 +4,8 @@ from behave import *
 from hamcrest import *
 
 # Wait for a while, as we may be downloading the image as well
-VM_WAIT_TIME=120
+VM_WAIT_TIME=60 * 10
+DEFAULT_QEMU_ARGS = ["-m", "1G", "-smp", "2"]
 
 def build_command(context):
     config = context.vm_config
@@ -30,6 +31,11 @@ def build_command(context):
 
     if "image-backend" in config:
         command.extend(["-image-backend", config["image-backend"]])
+
+    if "shared-folder" in config:
+        command.extend(["-shared-folder", *config["shared-folder"]])
+
+    command.extend(["--", *DEFAULT_QEMU_ARGS])
 
     return command
 
@@ -79,6 +85,13 @@ def step_impl(context, frontend):
 @given('a backend "{backend}"')
 def step_impl(context, backend):
     context.vm_config["image-backend"] = backend
+
+@given('a sshfs mount of "{}"')
+def step_impl(context, mount):
+    if "shared-folder" not in context.vm_config:
+        context.vm_config["shared-folder"] = [mount]
+    else:
+        context.vm_config["shared-folder"].append(mount)
 
 @when('the vm runs to completion')
 @when('the transient command is run')
