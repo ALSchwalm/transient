@@ -106,9 +106,14 @@ class TransientVm:
         for shared_spec in self.config.shared_folder:
             assert(self.ssh_config is not None)
             local, remote = shared_spec.split(":")
+
+            # The user almost certainly doesn't intend to pass a relative path,
+            # so make it absolute
+            absolute_local_path = os.path.abspath(local)
             sshfs.do_sshfs_mount(connect_timeout=self.config.ssh_timeout,
                                  ssh_config=self.ssh_config,
-                                 local_dir=local, remote_dir=remote,
+                                 local_dir=absolute_local_path,
+                                 remote_dir=remote,
                                  local_user=self.__current_user())
 
         if self.__needs_ssh_console():
