@@ -3,6 +3,7 @@ Feature: SSH Console
   (and vice versa), transient supports use sshfs to mount a host directory
   on the guest.
 
+  @skip-in-ci
   Scenario: Run VM with a single SSHFS mount
     Given a transient vm
       And a name "test-vm"

@@ -31,4 +31,7 @@ upload-release: prep-release
 
 .PHONY: test
 test:
-	make -C test test
+	make -C test all
+
+test-%:
+	make -C test $*

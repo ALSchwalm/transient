@@ -1,10 +1,17 @@
 
-.PHONY: test
-test: | clean behave
+.PHONY: all
+all: | clean behave
+
+.PHONY: ci
+ci: behave-ci
 
 .PHONY: behave
 behave:
 	behave
+
+.PHONY: behave-ci
+behave-ci:
+	behave --tags=~@skip-in-ci
 
 .PHONY: clean
 clean:
