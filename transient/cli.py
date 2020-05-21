@@ -12,7 +12,8 @@ def parse_arguments() -> argparse.Namespace:
     # the '--' (though it does work). To avoid confusion, just use our own.
     parser = argparse.ArgumentParser(prog='transient',
                                      description='A simple libvirt/vagrant alternative',
-                                     usage="transient [OPTIONS] -- [ARG [ARG ...]]")
+                                     usage="transient [OPTIONS] -- [ARG [ARG ...]]",
+                                     allow_abbrev=False)
 
     parser.add_argument('-version', '--version', action='version',
                         version='%(prog)s {}'.format(__version__))
@@ -30,6 +31,10 @@ def parse_arguments() -> argparse.Namespace:
 
     parser.add_argument('-ssh-console', '-ssh', action='store_const', const=True,
                         default=False, help='Use an ssh connection instead of the serial console')
+
+    parser.add_argument('-ssh-with-serial', '-sshs',
+                        default=False, const=True, action='store_const',
+                        help='Show the serial output before SSH connects (implies -ssh)')
 
     parser.add_argument('-ssh-user', '-u', default="vagrant", help='User to pass to SSH')
     parser.add_argument('-ssh-bin-name', default="ssh", help='SSH binary to use')

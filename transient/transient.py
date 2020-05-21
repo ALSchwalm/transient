@@ -33,10 +33,12 @@ class TransientVm:
     def __needs_ssh(self) -> bool:
         return (self.config.ssh_console is True or
                 self.config.ssh_command is not None or
+                self.config.ssh_with_serial is True or
                 len(self.config.shared_folder) > 0)
 
     def __needs_ssh_console(self) -> bool:
         return (self.config.ssh_console is True or
+                self.config.ssh_with_serial is True or
                 self.config.ssh_command is not None)
 
     def __qemu_added_devices(self) -> List[str]:
@@ -81,8 +83,16 @@ class TransientVm:
 
     def __connect_ssh(self) -> int:
         assert(self.ssh_config is not None)
+        assert(self.qemu_runner is not None)
+
         client = ssh.SshClient(config=self.ssh_config, command=self.config.ssh_command)
-        return client.connect_wait(timeout=self.config.ssh_timeout)
+        conn = client.connect_stdout(timeout=self.config.ssh_timeout)
+
+        # The SSH connection has been established. Silence the serial console
+        self.qemu_runner.silence()
+
+        conn.wait()
+        return conn.returncode
 
     def __current_user(self) -> str:
         return pwd.getpwuid(os.getuid()).pw_name
@@ -99,7 +109,16 @@ class TransientVm:
         added_qemu_args = self.__qemu_added_devices()
         full_qemu_args = added_qemu_args + self.config.qemu_args
 
-        self.qemu_runner = qemu.QemuRunner(full_qemu_args, quiet=self.__needs_ssh_console())
+        # If we are using the SSH console, we need to do _something_ with QEMU output.
+        qemu_quiet, qemu_silenceable = False, False
+        if self.__needs_ssh_console():
+            if self.config.ssh_with_serial is True:
+                qemu_quiet, qemu_silenceable = False, True
+            else:
+                qemu_quiet, qemu_silenceable = True, False
+
+        self.qemu_runner = qemu.QemuRunner(full_qemu_args, quiet=qemu_quiet,
+                                           silenceable=qemu_silenceable)
 
         self.qemu_runner.start()
 

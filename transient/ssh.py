@@ -180,10 +180,8 @@ class SshClient:
         raise RuntimeError("Failed to connect with command '{}' after {} seconds".format(
             probe_command, timeout))
 
-    def connect_wait(self, timeout: int) -> int:
-        conn = self.__timed_connection(timeout)
-        conn.wait()
-        return conn.returncode
+    def connect_stdout(self, timeout: int) -> 'subprocess.Popen[bytes]':
+        return self.__timed_connection(timeout)
 
     def connect_piped(self, timeout: int) -> 'subprocess.Popen[bytes]':
         return self.__timed_connection(timeout,
