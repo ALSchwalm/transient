@@ -30,7 +30,7 @@ with 1GB of memory using a text console. The `name` parameter is used to allow
 subsequent invocations to use the same disk image, so changes will persist.
 
 ```
-transient \
+transient run \
    -name test-vm \
    -image centos/7:2004.01 \
    -- \
@@ -43,7 +43,7 @@ with the machine, instead of the serial console. However, when this connection
 is closed, the machine will be terminated (unlike `vagrant`). For example:
 
 ```
-transient \
+transient run \
    -name test-vm \
    -ssh-console \
    -image centos/7:2004.01 \
