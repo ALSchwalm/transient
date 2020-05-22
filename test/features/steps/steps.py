@@ -38,6 +38,9 @@ def build_command(context):
     if "shared-folder" in config:
         command.extend(["-shared-folder", *config["shared-folder"]])
 
+    if "ssh-with-serial" in config:
+        command.extend(["-ssh-with-serial"])
+
     command.extend(["--", *DEFAULT_QEMU_ARGS])
 
     return command
@@ -72,6 +75,10 @@ def step_impl(context, image):
 @given('a ssh console')
 def step_impl(context):
     context.vm_config["ssh-console"] = True
+
+@given('a ssh-with-serial console')
+def step_impl(context):
+    context.vm_config["ssh-with-serial"] = True
 
 @given('a ssh command "{command}"')
 def step_impl(context, command):

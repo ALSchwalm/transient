@@ -26,3 +26,20 @@ Feature: SSH Console
       And we wait for the vm to exit
      Then the return code is 0
       And stdout contains "ssh-console working"
+
+
+  Scenario: Run VM with SSH and serial console
+    Given a transient vm
+      And a name "test-vm"
+      And a disk image "centos/7:2004.01"
+      And a ssh-with-serial console
+     When the vm runs
+      And the vm is provided stdin:
+        """
+        echo 'ssh-console working'
+        exit
+        """
+      And we wait for the vm to exit
+     Then the return code is 0
+      And stdout contains "ssh-console working"
+      And stdout contains "Linux version"
