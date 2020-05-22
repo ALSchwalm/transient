@@ -12,9 +12,9 @@ else:
     DEFAULT_TRANSIENT_ARGS = []
     DEFAULT_QEMU_ARGS = ["-m", "1G", "-smp", "2", "-enable-kvm", "-cpu", "host"]
 
-def build_command(context):
+def build_run_command(context):
     config = context.vm_config
-    command = ["transient", *DEFAULT_TRANSIENT_ARGS]
+    command = ["transient", "run", *DEFAULT_TRANSIENT_ARGS]
 
     if "name" in config:
         command.extend(["-name", config["name"]])
@@ -48,7 +48,7 @@ def build_command(context):
     return command
 
 def run_vm(context):
-    command = build_command(context)
+    command = build_run_command(context)
     handle = subprocess.Popen(command, stdin=subprocess.PIPE,
                               stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     context.handle = handle

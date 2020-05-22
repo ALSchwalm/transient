@@ -4,6 +4,7 @@ import fcntl
 import itertools
 import os
 import progressbar  # type: ignore
+import re
 import requests
 import subprocess
 import tarfile
@@ -13,22 +14,53 @@ from typing import cast, Optional, List, Dict, Any, Union
 _FALLBACK_BACKEND_PATH = "/tmp"
 _BLOCK_TRANSFER_SIZE = 64 * 1024  # 64KiB
 
+# vm_name-disk_number-image_name-image_version
+_VM_IMAGE_REGEX = re.compile(r"^[^\-]+-[^\-]+-[^\-]+$")
 
-class ImageInfo:
+# image_name-image_version
+_BACKEND_IMAGE_REGEX = re.compile(r"^[^\-]+$")
+
+
+class BaseImageInfo:
     store: 'ImageStore'
     virtual_size: int
     actual_size: int
-    name: str
+    filename: str
     format: str
     path: str
+    image_info: Dict[str, Any]
 
-    def __init__(self, store: 'ImageStore', image_info: Dict[str, Any], path: str):
+    def __init__(self, store: 'ImageStore', path: str):
+        stdout = subprocess.check_output([store.qemu_img_bin,
+                                          "info", "-U", "--output=json", path])
+        self.image_info = json.loads(stdout)
         self.store = store
-        self.virtual_size = image_info["virtual-size"]
-        self.actual_size = image_info["actual-size"]
-        self.name = os.path.split(image_info["filename"])[-1]
-        self.format = image_info["format"]
+        self.virtual_size = self.image_info["virtual-size"]
+        self.actual_size = self.image_info["actual-size"]
+        self.filename = os.path.split(self.image_info["filename"])[-1]
+        self.format = self.image_info["format"]
         self.path = path
+
+
+class BackendImageInfo(BaseImageInfo):
+    identifier: str
+
+    def __init__(self, store: 'ImageStore', path: str):
+        super().__init__(store, path)
+        self.identifier = self.filename
+
+
+class FrontendImageInfo(BaseImageInfo):
+    vm_name: str
+    disk_number: int
+    backend: BackendImageInfo
+
+    def __init__(self, store: 'ImageStore', path: str):
+        super().__init__(store, path)
+        vm_name, number, image = self.filename.split("-")
+        self.vm_name = vm_name
+        self.disk_number = int(number)
+        self.backend = BackendImageInfo(store, self.image_info["full-backing-filename"])
 
 
 class ImageStore:
@@ -93,10 +125,14 @@ class ImageStore:
     def __default_qemu_img_bin(self) -> str:
         return "qemu-img"
 
-    def __image_info(self, path: str) -> ImageInfo:
-        stdout = subprocess.check_output([self.qemu_img_bin,
-                                          "info", "-U", "--output=json", path])
-        return ImageInfo(self, json.loads(stdout), path)
+    def __image_info(self, path: str) -> BaseImageInfo:
+        filename = os.path.split(path)[-1]
+        if _VM_IMAGE_REGEX.match(filename):
+            return FrontendImageInfo(self, path)
+        elif _BACKEND_IMAGE_REGEX.match(filename):
+            return BackendImageInfo(self, path)
+        else:
+            raise RuntimeError("Invalid image file name: '{}'".format(filename))
 
     def __download_vagrant_info(self, image_name: str) -> Dict[str, Any]:
         url = "https://app.vagrantup.com/api/v1/box/{}".format(image_name)
@@ -108,8 +144,8 @@ class ImageStore:
                                .format(image_name))
         return cast(Dict[str, Any], json.loads(response.content))
 
-    def __pathsafe_image_name(self, image_name: str) -> str:
-        return image_name.replace("/", "_").replace(":", "_")
+    def __storage_safe_name(self, name: str) -> str:
+        return name.replace("/", "_").replace(":", "_").replace("-", "_")
 
     def __vagrant_box_url(self, version: str, box_info: Dict[str, Any]) -> str:
         for version_info in box_info["versions"]:
@@ -126,15 +162,16 @@ class ImageStore:
         raise RuntimeError("No version '{}' available for {} with provider libvirt"
                            .format(version, box_info["tag"]))
 
-    def __download_vagrant_image(self, image_name: str, destination: str) -> None:
-        box_name, version = image_name.split(":")
+    def __download_vagrant_image(self, image_identifier: str, destination: str) -> None:
+        box_name, version = image_identifier.split(":")
 
         # For convenience, allow the user to specify the version with a v,
         # but that isn't how the API reports it
         if version.startswith("v"):
             version = version[1:]
 
-        logging.info("Download vagrant image: box_name={}, version={}".format(box_name, version))
+        logging.info("Download vagrant image: box_name={}, version={}".format(
+            box_name, version))
 
         box_info = self.__download_vagrant_info(box_name)
         logging.debug("Vagrant box info: {}".format(box_info))
@@ -226,30 +263,32 @@ class ImageStore:
         os.remove(box_destination)
         box_file.close()
 
-    def retrieve_image(self, image_name: str) -> ImageInfo:
-        pathsafe_name = self.__pathsafe_image_name(image_name)
-        destination = os.path.join(self.backend, pathsafe_name)
+    def retrieve_image(self, image_identifier: str) -> BackendImageInfo:
+        safe_name = self.__storage_safe_name(image_identifier)
+        destination = os.path.join(self.backend, safe_name)
 
         if os.path.exists(destination):
-            logging.info("Image '{}' already exists. Skipping download".format(image_name))
-            return self.__image_info(destination)
+            logging.info("Image '{}' already exists. Skipping download".format(
+                image_identifier))
+            return BackendImageInfo(self, destination)
 
-        print("Unable to find image '{}' in backend".format(image_name))
+        print("Unable to find image '{}' in backend".format(image_identifier))
 
         # For now, we only support vagrant images
-        self.__download_vagrant_image(image_name, destination)
+        self.__download_vagrant_image(image_identifier, destination)
 
-        logging.info("Finished downloading image: {}".format(image_name))
-        return self.__image_info(destination)
+        logging.info("Finished downloading image: {}".format(image_identifier))
+        return BackendImageInfo(self, destination)
 
-    def create_vm_image(self, image_name: str, vm_name: str, num: int) -> ImageInfo:
+    def create_vm_image(self, image_name: str, vm_name: str, num: int) -> FrontendImageInfo:
         backing_image = self.retrieve_image(image_name)
+        safe_vmname = self.__storage_safe_name(vm_name)
         new_image_path = os.path.join(
-            self.frontend, "{}-{}-{}".format(vm_name, num, backing_image.name))
+            self.frontend, "{}-{}-{}".format(safe_vmname, num, backing_image.identifier))
 
         if os.path.exists(new_image_path):
             logging.info("VM image '{}' already exists. Skipping create.".format(new_image_path))
-            return self.__image_info(new_image_path)
+            return FrontendImageInfo(self, new_image_path)
 
         logging.info("Creating VM Image '{}' from backing image '{}'".format(
             new_image_path, backing_image.path))
@@ -260,10 +299,40 @@ class ImageStore:
                                  new_image_path])
 
         logging.info("VM Image '{}' created".format(new_image_path))
-        return self.__image_info(new_image_path)
+        return FrontendImageInfo(self, new_image_path)
 
-    def destroy_image(self, image: Union[str, ImageInfo]) -> None:
-        if isinstance(image, str):
-            os.remove(image)
-        else:
-            os.remove(image.path)
+    def frontend_image_list(self, vm_name: Optional[str] = None,
+                            image_identifier: Optional[str] = None) -> List[FrontendImageInfo]:
+        images = []
+        for candidate in os.listdir(self.frontend):
+            if not _VM_IMAGE_REGEX.match(candidate):
+                continue
+            path = os.path.join(self.frontend, candidate)
+            image_info = FrontendImageInfo(self, path)
+            if vm_name is not None:
+                safe_vmname = self.__storage_safe_name(vm_name)
+                if image_info.vm_name != safe_vmname:
+                    continue
+            if image_identifier is not None:
+                safe_identifier = self.__storage_safe_name(image_identifier)
+                if image_info.backend.identifier != safe_identifier:
+                    continue
+            images.append(image_info)
+        return images
+
+    def backend_image_list(self, image_identifier: Optional[str] = None) -> List[BackendImageInfo]:
+        images = []
+        for candidate in os.listdir(self.backend):
+            if not _BACKEND_IMAGE_REGEX.match(candidate):
+                continue
+            path = os.path.join(self.backend, candidate)
+            image_info = BackendImageInfo(self, path)
+            if image_identifier is not None:
+                safe_identifier = self.__storage_safe_name(image_identifier)
+                if image_info.identifier != safe_identifier:
+                    continue
+            images.append(image_info)
+        return images
+
+    def delete_image(self, image: BaseImageInfo) -> None:
+        os.remove(image.path)

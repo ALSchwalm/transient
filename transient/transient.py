@@ -14,19 +14,18 @@ from typing import cast, Optional, List, Dict, Any, Union
 class TransientVm:
     store: image.ImageStore
     config: argparse.Namespace
-    vm_images: List[image.ImageInfo]
+    vm_images: List[image.FrontendImageInfo]
     ssh_config: Optional[ssh.SshConfig]
     qemu_runner: Optional[qemu.QemuRunner]
 
-    def __init__(self, config: argparse.Namespace) -> None:
-        self.store = image.ImageStore(backend_dir=config.image_backend,
-                                      frontend_dir=config.image_frontend)
+    def __init__(self, config: argparse.Namespace, store: image.ImageStore) -> None:
+        self.store = store
         self.config = config
         self.vm_images = []
         self.ssh_config = None
         self.qemu_runner = None
 
-    def __create_images(self, names: List[str]) -> List[image.ImageInfo]:
+    def __create_images(self, names: List[str]) -> List[image.FrontendImageInfo]:
         return [self.store.create_vm_image(image_name, self.config.name, idx)
                 for idx, image_name in enumerate(names)]
 

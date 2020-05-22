@@ -19,7 +19,7 @@ Feature: Image Support
       And the vm is prepare-only
      When the transient command is run
      Then the return code is 0
-      And the file "test-vm-0-generic_alpine38_v3.0.2" is in the frontend
+      And the file "test_vm-0-generic_alpine38_v3.0.2" is in the frontend
 
  Scenario: Set a custom backend
     Given a transient vm
