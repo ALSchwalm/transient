@@ -3,8 +3,17 @@ transient
 
 [![Documentation Status](https://readthedocs.org/projects/transient/badge/?version=latest)](https://transient.readthedocs.io/en/latest/?badge=latest)
 
-`transient` is a utility for runing QEMU with existing disk images and shared folders.
+`transient` is a utility for running QEMU with existing disk images and shared folders.
 Currently `transient` only supports [Vagrant](https://www.vagrantup.com/) images.
+
+Installation
+------------
+
+`transient` is available on [PyPI](https://pypi.org/project/transient/), so the latest
+release can be installed with `pip install transient`. To install `transient` from
+source, clone this repository and run `pip install -e '.[dev]'` from the project
+root. As always, the usage of python [virtual environments](https://docs.python.org/3/tutorial/venv.html)
+is recommended for a development setup.
 
 Usage
 -----
@@ -18,10 +27,10 @@ For example, in the following command, the flags before the `--` are passed to
 `transient`. The remaining arguments are passed directly to QEMU. This example
 will cause `transient` to download and run a Centos7 VM (from the Vagrant Cloud)
 with 1GB of memory using a text console. The `name` parameter is used to allow
-subseqent invocations to use the same disk image, so changes will persist.
+subsequent invocations to use the same disk image, so changes will persist.
 
 ```
-python -m transient \
+transient \
    -name test-vm \
    -image centos/7:2004.01 \
    -- \
@@ -34,7 +43,7 @@ with the machine, instead of the serial console. However, when this connection
 is closed, the machine will be terminated (unlike `vagrant`). For example:
 
 ```
-python -m transient \
+transient \
    -name test-vm \
    -ssh-console \
    -image centos/7:2004.01 \
