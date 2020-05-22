@@ -6,13 +6,15 @@ from hamcrest import *
 # Wait for a while, as we may be downloading the image as well
 VM_WAIT_TIME=60 * 10
 if os.getenv("CI") is not None:
+    DEFAULT_TRANSIENT_ARGS = ["-ssh-timeout", "300"]
     DEFAULT_QEMU_ARGS = ["-m", "1G", "-smp", "2"]
 else:
+    DEFAULT_TRANSIENT_ARGS = []
     DEFAULT_QEMU_ARGS = ["-m", "1G", "-smp", "2", "-enable-kvm", "-cpu", "host"]
 
 def build_command(context):
     config = context.vm_config
-    command = ["transient"]
+    command = ["transient", *DEFAULT_TRANSIENT_ARGS]
 
     if "name" in config:
         command.extend(["-name", config["name"]])
