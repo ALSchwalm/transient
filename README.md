@@ -6,6 +6,14 @@ transient
 `transient` is a utility for runing QEMU with existing disk images and shared folders.
 Currently `transient` only supports [Vagrant](https://www.vagrantup.com/) images.
 
+Installation
+-----
+Install `transient` via `pip`:
+
+```
+pip install transient
+```
+
 Usage
 -----
 
