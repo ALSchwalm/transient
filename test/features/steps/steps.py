@@ -125,6 +125,11 @@ def step_impl(context):
 
 @then('the return code is {code}')
 def step_impl(context, code):
+    if context.handle.returncode != int(code):
+        print("command stdout:")
+        print(context.stdout)
+        print("command stderr:")
+        print(context.stderr)
     assert_that(context.handle.returncode, equal_to(int(code)))
 
 @then('stdout contains "{expected_stdout}"')
