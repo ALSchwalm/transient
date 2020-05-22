@@ -1,6 +1,8 @@
 transient
 ---------
 
+[![Documentation Status](https://readthedocs.org/projects/transient/badge/?version=latest)](https://transient.readthedocs.io/en/latest/?badge=latest)
+
 `transient` is a utility for runing QEMU with existing disk images and shared folders.
 Currently `transient` only supports [Vagrant](https://www.vagrantup.com/) images.
 
