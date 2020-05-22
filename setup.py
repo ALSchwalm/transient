@@ -32,6 +32,7 @@ setup(
     extras_require={
         "dev": [
             "autopep8==1.5.2",
+            "mkdocs==1.1.2",
             "mypy==0.770",
             "pycodestyle==2.6.0",
             "PyHamcrest==2.0.2",

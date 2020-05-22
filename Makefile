@@ -35,3 +35,7 @@ test:
 
 test-%:
 	make -C test $*
+
+.PHONY: docs
+docs:
+	mkdocs serve
