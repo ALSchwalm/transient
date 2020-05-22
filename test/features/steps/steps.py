@@ -12,9 +12,9 @@ else:
     DEFAULT_TRANSIENT_ARGS = []
     DEFAULT_QEMU_ARGS = ["-m", "1G", "-smp", "2", "-enable-kvm", "-cpu", "host"]
 
-def build_run_command(context):
+def build_command(context):
     config = context.vm_config
-    command = ["transient", "run", *DEFAULT_TRANSIENT_ARGS]
+    command = ["transient", config["command"], *config["extra-transient-args"]]
 
     if "name" in config:
         command.extend(["-name", config["name"]])
@@ -43,12 +43,12 @@ def build_run_command(context):
     if "ssh-with-serial" in config:
         command.extend(["-ssh-with-serial"])
 
-    command.extend(["--", *DEFAULT_QEMU_ARGS])
+    command.extend(config["extra-qemu-args"])
 
     return command
 
 def run_vm(context):
-    command = build_run_command(context)
+    command = build_command(context)
     handle = subprocess.Popen(command, stdin=subprocess.PIPE,
                               stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     context.handle = handle
@@ -61,7 +61,19 @@ def wait_on_vm(context, timeout=VM_WAIT_TIME):
 
 @given('a transient vm')
 def step_impl(context):
-    context.vm_config = {}
+    context.vm_config = {
+        "command": "run",
+        "extra-transient-args": DEFAULT_TRANSIENT_ARGS,
+        "extra-qemu-args": ["--", *DEFAULT_QEMU_ARGS],
+    }
+
+@given('a transient delete command')
+def step_impl(context):
+    context.vm_config = {
+        "command": "delete",
+        "extra-transient-args": ["-force"],
+        "extra-qemu-args": [],
+    }
 
 @given('a name "{name}"')
 def step_impl(context, name):
@@ -143,7 +155,17 @@ def step_impl(context, name):
     items = os.listdir(context.vm_config["image-backend"])
     assert_that(items, has_item(name))
 
+@then('the file "{name}" is not in the backend')
+def step_impl(context, name):
+    items = os.listdir(context.vm_config["image-backend"])
+    assert_that(items, not_(has_item(name)))
+
 @then('the file "{name}" is in the frontend')
 def step_impl(context, name):
     items = os.listdir(context.vm_config["image-frontend"])
     assert_that(items, has_item(name))
+
+@then('the file "{name}" is not in the frontend')
+def step_impl(context, name):
+    items = os.listdir(context.vm_config["image-frontend"])
+    assert_that(items, not_(has_item(name)))

@@ -77,7 +77,8 @@ def parse_arguments() -> argparse.Namespace:
     delete_parser = subparsers.add_parser('delete', help='Delete transient disks',
                                           parents=[common_parser])
     delete_parser.add_argument('-name', help='Set the vm name')
-    delete_parser.add_argument('-force', '-f', help='Do not prompt before deletion')
+    delete_parser.add_argument('-force', '-f', help='Do not prompt before deletion',
+                               action='store_const', const=True, default=False)
 
     return parser.parse_args()
 
@@ -124,7 +125,12 @@ def _delete_handler(store: image.ImageStore, args: argparse.Namespace) -> int:
     for image in images:
         print(image.filename)
     print()
-    response = utils.prompt_yes_no("Proceed?", default=False)
+
+    if args.force is False:
+        response = utils.prompt_yes_no("Proceed?", default=False)
+    else:
+        response = True
+
     if response is False:
         return 0
 

@@ -30,3 +30,19 @@ Feature: Image Support
      When the transient command is run
      Then the return code is 0
       And the file "generic_alpine38_v3.0.2" is in the backend
+
+ Scenario: Delete a frontend image
+    Given a transient delete command
+      And a name "test-vm"
+      And a frontend "./test-frontend"
+     When the transient command is run
+     Then the return code is 0
+      And the file "test_vm-0-generic_alpine38_v3.0.2" is not in the frontend
+
+ Scenario: Delete a backend image
+    Given a transient delete command
+      And a disk image "generic/alpine38:v3.0.2"
+      And a backend "./test-backend"
+     When the transient command is run
+     Then the return code is 0
+      And the file "generic_alpine38_v3.0.2" is not in the backend
