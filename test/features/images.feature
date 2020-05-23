@@ -19,7 +19,7 @@ Feature: Image Support
       And the vm is prepare-only
      When the transient command is run
      Then the return code is 0
-      And the file "test_vm-0-generic_alpine38_v3.0.2" is in the frontend
+      And the file "test%2Dvm-0-generic%2Falpine38%3Av3.0.2" is in the frontend
 
  Scenario: Set a custom backend
     Given a transient vm
@@ -29,7 +29,7 @@ Feature: Image Support
       And the vm is prepare-only
      When the transient command is run
      Then the return code is 0
-      And the file "generic_alpine38_v3.0.2" is in the backend
+      And the file "generic%2Falpine38%3Av3.0.2" is in the backend
 
  Scenario: Delete a frontend image
     Given a transient delete command
@@ -37,7 +37,7 @@ Feature: Image Support
       And a frontend "./test-frontend"
      When the transient command is run
      Then the return code is 0
-      And the file "test_vm-0-generic_alpine38_v3.0.2" is not in the frontend
+      And the file "test%2Dvm-0-generic%2Falpine38%3Av3.0.2" is not in the frontend
 
  Scenario: Delete a backend image
     Given a transient delete command
@@ -45,4 +45,4 @@ Feature: Image Support
       And a backend "./test-backend"
      When the transient command is run
      Then the return code is 0
-      And the file "generic_alpine38_v3.0.2" is not in the backend
+      And the file "generic%2Falpine38%3Av3.0.2" is not in the backend

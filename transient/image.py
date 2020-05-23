@@ -8,6 +8,7 @@ import re
 import requests
 import subprocess
 import tarfile
+import urllib.parse
 
 from typing import cast, Optional, List, Dict, Any, Union
 
@@ -19,6 +20,16 @@ _VM_IMAGE_REGEX = re.compile(r"^[^\-]+-[^\-]+-[^\-]+$")
 
 # image_name-image_version
 _BACKEND_IMAGE_REGEX = re.compile(r"^[^\-]+$")
+
+
+def _storage_safe_encode(name: str) -> str:
+    # Use URL quote so the names are still somewhat readable in the filesystem, but
+    # we can unambiguously get the true name back for display purposes
+    return urllib.parse.quote(name, safe="").replace("-", "%2D")
+
+
+def _storage_safe_decode(name: str) -> str:
+    return urllib.parse.unquote(name)
 
 
 class BaseImageInfo:
@@ -47,7 +58,10 @@ class BackendImageInfo(BaseImageInfo):
 
     def __init__(self, store: 'ImageStore', path: str):
         super().__init__(store, path)
-        self.identifier = self.filename
+        self.identifier = _storage_safe_decode(self.filename)
+
+    def __str__(self) -> str:
+        return "Backend image {}".format(self.identifier)
 
 
 class FrontendImageInfo(BaseImageInfo):
@@ -58,9 +72,13 @@ class FrontendImageInfo(BaseImageInfo):
     def __init__(self, store: 'ImageStore', path: str):
         super().__init__(store, path)
         vm_name, number, image = self.filename.split("-")
-        self.vm_name = vm_name
+        self.vm_name = _storage_safe_decode(vm_name)
         self.disk_number = int(number)
         self.backend = BackendImageInfo(store, self.image_info["full-backing-filename"])
+
+    def __str__(self) -> str:
+        return "{} disk {} (backed by {})".format(self.vm_name, self.disk_number,
+                                                  self.backend.identifier)
 
 
 class ImageStore:
@@ -143,9 +161,6 @@ class ImageStore:
             raise RuntimeError("Unable to download vagrant image '{}' info. Maybe invalid image?"
                                .format(image_name))
         return cast(Dict[str, Any], json.loads(response.content))
-
-    def __storage_safe_name(self, name: str) -> str:
-        return name.replace("/", "_").replace(":", "_").replace("-", "_")
 
     def __vagrant_box_url(self, version: str, box_info: Dict[str, Any]) -> str:
         for version_info in box_info["versions"]:
@@ -264,7 +279,7 @@ class ImageStore:
         box_file.close()
 
     def retrieve_image(self, image_identifier: str) -> BackendImageInfo:
-        safe_name = self.__storage_safe_name(image_identifier)
+        safe_name = _storage_safe_encode(image_identifier)
         destination = os.path.join(self.backend, safe_name)
 
         if os.path.exists(destination):
@@ -282,9 +297,10 @@ class ImageStore:
 
     def create_vm_image(self, image_name: str, vm_name: str, num: int) -> FrontendImageInfo:
         backing_image = self.retrieve_image(image_name)
-        safe_vmname = self.__storage_safe_name(vm_name)
+        safe_vmname = _storage_safe_encode(vm_name)
+        safe_image_identifier = _storage_safe_encode(backing_image.identifier)
         new_image_path = os.path.join(
-            self.frontend, "{}-{}-{}".format(safe_vmname, num, backing_image.identifier))
+            self.frontend, "{}-{}-{}".format(safe_vmname, num, safe_image_identifier))
 
         if os.path.exists(new_image_path):
             logging.info("VM image '{}' already exists. Skipping create.".format(new_image_path))
@@ -310,12 +326,10 @@ class ImageStore:
             path = os.path.join(self.frontend, candidate)
             image_info = FrontendImageInfo(self, path)
             if vm_name is not None:
-                safe_vmname = self.__storage_safe_name(vm_name)
-                if image_info.vm_name != safe_vmname:
+                if image_info.vm_name != vm_name:
                     continue
             if image_identifier is not None:
-                safe_identifier = self.__storage_safe_name(image_identifier)
-                if image_info.backend.identifier != safe_identifier:
+                if image_info.backend.identifier != image_identifier:
                     continue
             images.append(image_info)
         return images
@@ -328,8 +342,7 @@ class ImageStore:
             path = os.path.join(self.backend, candidate)
             image_info = BackendImageInfo(self, path)
             if image_identifier is not None:
-                safe_identifier = self.__storage_safe_name(image_identifier)
-                if image_info.identifier != safe_identifier:
+                if image_info.identifier != image_identifier:
                     continue
             images.append(image_info)
         return images
