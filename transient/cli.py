@@ -1,5 +1,6 @@
 import argparse
 import logging
+import signal
 import sys
 import textwrap
 
@@ -171,8 +172,12 @@ def _delete_handler(store: image.ImageStore, args: argparse.Namespace) -> int:
         store.delete_image(image_info)
     return 0
 
+def sigint_handler(sig, frame):
+    logging.warning("transient process received SIGINT")
+    sys.exit(1)
 
 def main() -> None:
+    signal.signal(signal.SIGINT, sigint_handler)
     args = parse_arguments()
 
     log_level = logging.ERROR
