@@ -15,7 +15,7 @@ from . import utils
 from typing import cast, Optional, List, Dict, Any, Union, Tuple
 
 
-_FALLBACK_BACKEND_PATH = "/tmp"
+_FALLBACK_DATA_PATH = "/tmp"
 _BLOCK_TRANSFER_SIZE = 64 * 1024  # 64KiB
 
 # vm_name-disk_number-image_name-image_version
@@ -149,11 +149,7 @@ class ImageStore:
                 progressbar.ETA(),
             ])
 
-    def __default_backend_dir(self) -> str:
-        env_specified = os.getenv("TRANSIENT_BACKEND")
-        if env_specified is not None:
-            return env_specified
-
+    def __transient_data_home(self) -> str:
         user_home = os.getenv("HOME")
         default_xdg_data_home = None
         if user_home is not None:
@@ -161,17 +157,24 @@ class ImageStore:
 
         xdg_data_home = os.getenv("XDG_DATA_HOME", default_xdg_data_home)
         if xdg_data_home is None:
-            logging.warning("$HOME and $XDG_DATA_HOME not set. Using {}/transient as backend"
-                            .format(_FALLBACK_BACKEND_PATH))
-            xdg_data_home = _FALLBACK_BACKEND_PATH
-
+            logging.warning("$HOME and $XDG_DATA_HOME not set. Using {}"
+                            .format(_FALLBACK_DATA_PATH))
+            xdg_data_home = _FALLBACK_DATA_PATH
         return os.path.join(xdg_data_home, "transient")
+
+    def __default_backend_dir(self) -> str:
+        env_specified = os.getenv("TRANSIENT_BACKEND")
+        if env_specified is not None:
+            return env_specified
+        home = self.__transient_data_home()
+        return os.path.join(home, "backend")
 
     def __default_frontend_dir(self) -> str:
         env_specified = os.getenv("TRANSIENT_FRONTEND")
         if env_specified is not None:
             return env_specified
-        return self.__default_backend_dir()
+        home = self.__transient_data_home()
+        return os.path.join(home, "frontend")
 
     def __default_qemu_img_bin(self) -> str:
         return "qemu-img"
