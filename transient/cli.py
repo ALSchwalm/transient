@@ -76,9 +76,13 @@ def parse_arguments() -> argparse.Namespace:
 
     delete_parser = subparsers.add_parser('delete', help='Delete transient disks',
                                           parents=[common_parser])
-    delete_parser.add_argument('-name', help='Set the vm name')
+    delete_parser.add_argument('-name', help='Delete images associated with the given vm name')
     delete_parser.add_argument('-force', '-f', help='Do not prompt before deletion',
                                action='store_const', const=True, default=False)
+
+    list_parser = subparsers.add_parser('list', help='List transient disk information',
+                                        parents=[common_parser])
+    list_parser.add_argument('-name', help='List disks associated with the given vm name')
 
     return parser.parse_args()
 
@@ -101,7 +105,8 @@ class ExtendAction(argparse._AppendAction):
         setattr(namespace, self.dest, items)
 
 
-def _delete_handler(store: image.ImageStore, args: argparse.Namespace) -> int:
+def _find_requested_images(store: image.ImageStore,
+                           args: argparse.Namespace) -> List[image.BaseImageInfo]:
     images: List[image.BaseImageInfo] = []
     if args.name is not None:
         if args.image is None:
@@ -117,6 +122,28 @@ def _delete_handler(store: image.ImageStore, args: argparse.Namespace) -> int:
             for image_identifier in args.image:
                 images.extend(store.backend_image_list(image_identifier))
                 images.extend(store.frontend_image_list(image_identifier=image_identifier))
+    return images
+
+
+def _list_handler(store: image.ImageStore, args: argparse.Namespace) -> int:
+    images = _find_requested_images(store, args)
+
+    if len(images) == 0:
+        print("No images match selection", file=sys.stderr)
+        return 1
+
+    frontend, backend = image.format_image_table(images)
+    if len(frontend) > 0:
+        print("Frontend Images:")
+        print(frontend)
+    if len(backend) > 0:
+        print("\nBackend Images:")
+        print(backend)
+    return 0
+
+
+def _delete_handler(store: image.ImageStore, args: argparse.Namespace) -> int:
+    images = _find_requested_images(store, args)
 
     if len(images) == 0:
         print("No images match selection", file=sys.stderr)
@@ -168,4 +195,6 @@ def main() -> None:
         returncode = trans.run()
     elif args.command == "delete":
         returncode = _delete_handler(store, args)
+    elif args.command == "list":
+        returncode = _list_handler(store, args)
     sys.exit(returncode)
