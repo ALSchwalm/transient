@@ -109,22 +109,27 @@ def _delete_handler(store: image.ImageStore, args: argparse.Namespace) -> int:
         else:
             for image_identifier in args.image:
                 images.extend(store.frontend_image_list(args.name, image_identifier))
-        print("The following vm images will be deleted:\n")
     else:
         if args.image is None:
             images = list(store.backend_image_list())
+            images.extend(store.frontend_image_list())
         else:
             for image_identifier in args.image:
                 images.extend(store.backend_image_list(image_identifier))
+                images.extend(store.frontend_image_list(image_identifier=image_identifier))
 
-        # TODO: should we try to automatically add the frontend images to this list?
-        print(textwrap.dedent("""\
-        The following backend images will be destroyed.
-        NOTE: This will invalidate any vm backed by one of these images
-        """))
-    for image in images:
-        print(image.filename)
-    print()
+    if len(images) == 0:
+        print("No images match selection", file=sys.stderr)
+        return 1
+
+    print("The following images will be deleted:\n")
+    frontend, backend = image.format_image_table(images)
+    if len(frontend) > 0:
+        print("Frontend Images:")
+        print(frontend)
+    if len(backend) > 0:
+        print("\nBackend Images:")
+        print(backend)
 
     if args.force is False:
         response = utils.prompt_yes_no("Proceed?", default=False)
@@ -134,11 +139,9 @@ def _delete_handler(store: image.ImageStore, args: argparse.Namespace) -> int:
     if response is False:
         return 0
 
-    for image in images:
-        print("Removing {}...".format(image.filename), end="")
-        logging.info("Deleting image at {}".format(image.path))
-        store.delete_image(image)
-        print("done")
+    for image_info in images:
+        logging.info("Deleting image at {}".format(image_info.path))
+        store.delete_image(image_info)
     return 0
 
 

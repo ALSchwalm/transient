@@ -1,3 +1,4 @@
+import beautifultable  # type: ignore
 import json
 import logging
 import fcntl
@@ -10,7 +11,9 @@ import subprocess
 import tarfile
 import urllib.parse
 
-from typing import cast, Optional, List, Dict, Any, Union
+from . import utils
+from typing import cast, Optional, List, Dict, Any, Union, Tuple
+
 
 _FALLBACK_BACKEND_PATH = "/tmp"
 _BLOCK_TRANSFER_SIZE = 64 * 1024  # 64KiB
@@ -60,9 +63,6 @@ class BackendImageInfo(BaseImageInfo):
         super().__init__(store, path)
         self.identifier = _storage_safe_decode(self.filename)
 
-    def __str__(self) -> str:
-        return "Backend image {}".format(self.identifier)
-
 
 class FrontendImageInfo(BaseImageInfo):
     vm_name: str
@@ -76,9 +76,42 @@ class FrontendImageInfo(BaseImageInfo):
         self.disk_number = int(number)
         self.backend = BackendImageInfo(store, self.image_info["full-backing-filename"])
 
-    def __str__(self) -> str:
-        return "{} disk {} (backed by {})".format(self.vm_name, self.disk_number,
-                                                  self.backend.identifier)
+
+def format_frontend_image_table(list: List[FrontendImageInfo]) -> beautifultable.BeautifulTable:
+    table = beautifultable.BeautifulTable()
+    table.column_headers = ["VM Name", "Backend Image", "Disk Num", "Real Size", "Virt Size"]
+    table.set_style(beautifultable.BeautifulTable.STYLE_BOX)
+    table.column_alignments['VM Name'] = beautifultable.BeautifulTable.ALIGN_LEFT
+    table.column_alignments['Backend Image'] = beautifultable.BeautifulTable.ALIGN_LEFT
+    table.column_alignments['Disk Num'] = beautifultable.BeautifulTable.ALIGN_RIGHT
+    table.column_alignments['Real Size'] = beautifultable.BeautifulTable.ALIGN_RIGHT
+    table.column_alignments['Virt Size'] = beautifultable.BeautifulTable.ALIGN_RIGHT
+    for image in list:
+        table.append_row([image.vm_name, image.backend.identifier,
+                          image.disk_number, utils.format_bytes(image.actual_size),
+                          utils.format_bytes(image.virtual_size)])
+    return table
+
+
+def format_backend_image_table(list: List[BackendImageInfo]) -> beautifultable.BeautifulTable:
+    table = beautifultable.BeautifulTable()
+    table.column_headers = ["Image Name", "Real Size", "Virt Size"]
+    table.set_style(beautifultable.BeautifulTable.STYLE_BOX)
+    table.column_alignments['Image Name'] = beautifultable.BeautifulTable.ALIGN_LEFT
+    table.column_alignments['Real Size'] = beautifultable.BeautifulTable.ALIGN_RIGHT
+    table.column_alignments['Virt Size'] = beautifultable.BeautifulTable.ALIGN_RIGHT
+    for image in list:
+        table.append_row([image.identifier, utils.format_bytes(image.actual_size),
+                          utils.format_bytes(image.virtual_size)])
+    return table
+
+
+def format_image_table(list: List[BaseImageInfo]) -> Tuple[beautifultable.BeautifulTable,
+                                                           beautifultable.BeautifulTable]:
+    frontend = [img for img in list if isinstance(img, FrontendImageInfo)]
+    backend = [img for img in list if isinstance(img, BackendImageInfo)]
+    return (format_frontend_image_table(frontend),
+            format_backend_image_table(backend))
 
 
 class ImageStore:

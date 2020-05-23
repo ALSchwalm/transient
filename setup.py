@@ -25,6 +25,7 @@ setup(
     long_description_content_type="text/markdown",
     packages=find_packages('.', exclude=["*.tests", "*.tests.*", "tests.*", "tests"]),
     install_requires=[
+        "beautifultable==0.8.0",
         "importlib-resources==1.5.0",
         "progressbar2==3.51.3",
         "requests==2.23.0"

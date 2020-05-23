@@ -46,3 +46,10 @@ Feature: Image Support
      When the transient command is run
      Then the return code is 0
       And the file "generic%2Falpine38%3Av3.0.2" is not in the backend
+
+ Scenario: Delete a nonexistent file
+    Given a transient delete command
+      And a disk image "backend-does-not-exist"
+      And a backend "./test-backend"
+     When the transient command is run
+     Then the return code is 1
