@@ -144,7 +144,7 @@ def do_sshfs_mount(*, connect_timeout: int, local_dir: str, remote_dir: str,
 
         # This is somewhat gnarly. The core of the issue is that sshfs is a FUSE mount,
         # so it runs as a process (that gets backgrounded by default). SSH won't close
-        # the connection on it's side until "it encounters end-of-file (eof) on the pipes
+        # the connection on its side until "it encounters end-of-file (eof) on the pipes
         # connecting  to the stdout and stderr of the user program". This typically means
         # you can do something like 'nohup <cmd> >/dev/null </dev/null 2>&1 &' to close
         # all handles and ignore any hang ups. However, this doesn't work for SSHFS, as
@@ -159,10 +159,12 @@ def do_sshfs_mount(*, connect_timeout: int, local_dir: str, remote_dir: str,
         # See http://www.snailbook.com/faq/background-jobs.auto.html for some more info.
         _, raw_stderr = conn.communicate(input="""
           set -e
+          sudo mkdir -p {remote_dir}
           {sshfs_command}
           echo TRANSIENT_SSHFS_DONE
           exit
-        """.format(sshfs_command=sshfs_command).encode('utf-8'), timeout=sshfs_timeout)
+        """.format(remote_dir=remote_dir, sshfs_command=sshfs_command).encode('utf-8'),
+            timeout=sshfs_timeout)
 
         # Ensure returncode is set
         conn.poll()
