@@ -4,9 +4,12 @@ from . import ssh
 from . import sshfs
 
 import argparse
+import logging
 import os
 import pwd
+import signal
 import socket
+import sys
 
 from typing import cast, Optional, List, Dict, Any, Union
 
@@ -96,6 +99,30 @@ class TransientVm:
     def __current_user(self) -> str:
         return pwd.getpwuid(os.getuid()).pw_name
 
+    def __qemu_sigchld_handler(self, sig, frame) -> None:
+        # We register this signal handler after the QEMU start, so these must not be None
+        assert(self.qemu_runner is not None)
+        assert(self.qemu_runner.proc_handle is not None)
+
+        # We are only interested in the death of the QEMU child
+        pid, exit_indicator = os.waitpid(self.qemu_runner.proc_handle.pid, os.WNOHANG)
+        if (pid, exit_indicator) == (0, 0):
+            # In this case, the processes that sent SIGCHLD was not QEMU
+            return
+        else:
+            logging.error("QEMU Process has died. Exiting")
+            # According to the python docs, the exit_indicator is "a 16-bit number,
+            # whose low byte is the signal number that killed the process, and whose
+            # high byte is the exit status (if the signal number is zero); the high
+            # bit of the low byte is set if a core file was produced."
+            #
+            # Therefore, we check if the least significant 7 bits are unset, and if
+            # so, return the high byte. Otherwise, just return 1
+            if exit_indicator & 0x7f == 0:
+                sys.exit(exit_indicator >> 8)
+            else:
+                sys.exit(1)
+
     def run(self) -> int:
         # First, download and setup any required disks
         self.vm_images = self.__create_images(self.config.image)
@@ -119,7 +146,15 @@ class TransientVm:
         self.qemu_runner = qemu.QemuRunner(full_qemu_args, quiet=qemu_quiet,
                                            silenceable=qemu_silenceable)
 
-        self.qemu_runner.start()
+        qemu_proc = self.qemu_runner.start()
+
+        # Register the exit signal handler for the qemu subprocess, then check if it
+        # had already died, just in case.
+        signal.signal(signal.SIGCHLD, self.__qemu_sigchld_handler)
+        qemu_returncode = qemu_proc.poll()
+        if qemu_returncode is not None:
+            logging.error("QEMU Process has died. Exiting")
+            sys.exit(qemu_returncode)
 
         for shared_spec in self.config.shared_folder:
             assert(self.ssh_config is not None)

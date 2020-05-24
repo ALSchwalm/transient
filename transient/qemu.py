@@ -103,7 +103,7 @@ class QemuRunner:
     def __find_qemu_bin_name(self) -> str:
         return 'qemu-system-x86_64'
 
-    def start(self) -> None:
+    def start(self) -> 'subprocess.Popen[bytes]':
         logging.info("Starting qemu process '{}' with arguments '{}'".format(
             self.bin_name, self.args))
 
@@ -131,6 +131,7 @@ class QemuRunner:
             thread = threading.Thread(target=self.proxy.start, args=(self.proc_handle,))
             thread.daemon = True
             thread.start()
+        return self.proc_handle
 
     def silence(self):
         if self.quiet is True:
