@@ -1,2 +1,12 @@
 site_name: Transient
 theme: readthedocs
+
+nav:
+    - Overview: index.md
+    - Installation: installation.md
+    - 'Command Line Interface':
+      - 'Run': cli/run.md
+      - 'List': cli/list.md
+      - 'Delete': cli/delete.md
+    - Feature Details:
+      - 'Using Shared Folders': details/shared-folders.md
