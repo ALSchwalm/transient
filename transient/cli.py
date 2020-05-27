@@ -65,6 +65,9 @@ def parse_arguments() -> argparse.Namespace:
     run_parser.add_argument('-sync-after', '-a', nargs='+', action=ExtendAction,
                             help='Sync a guest path to a host path after stopping the guest')
 
+    run_parser.add_argument('-shutdown-timeout', type=int, default=20,
+                            help='The time to wait for shutdown before terminating QEMU')
+
     run_parser.add_argument(
         '-shared-folder', '-s', nargs='+', action=ExtendAction, default=[],
         help='Share a host directory with the guest (/path/on/host:/path/on/guest)')

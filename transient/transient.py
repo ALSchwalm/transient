@@ -1,5 +1,6 @@
 from . import qemu
 from . import image
+from . import utils
 from . import ssh
 from . import sshfs
 
@@ -8,7 +9,7 @@ import logging
 import os
 import pwd
 import signal
-import socket
+import subprocess
 import sys
 
 from typing import cast, Optional, List, Dict, Any, Union
@@ -20,6 +21,7 @@ class TransientVm:
     vm_images: List[image.FrontendImageInfo]
     ssh_config: Optional[ssh.SshConfig]
     qemu_runner: Optional[qemu.QemuRunner]
+    qemu_should_die: bool
 
     def __init__(self, config: argparse.Namespace, store: image.ImageStore) -> None:
         self.store = store
@@ -27,6 +29,7 @@ class TransientVm:
         self.vm_images = []
         self.ssh_config = None
         self.qemu_runner = None
+        self.qemu_should_die = False
 
     def __create_images(self, names: List[str]) -> List[image.FrontendImageInfo]:
         return [self.store.create_vm_image(image_name, self.config.name, idx)
@@ -53,7 +56,7 @@ class TransientVm:
                 new_args.append("-nographic")
 
             if self.config.ssh_port is None:
-                ssh_port = self.__allocate_random_port()
+                ssh_port = utils.allocate_random_port()
             else:
                 ssh_port = self.config.ssh_port
 
@@ -72,17 +75,6 @@ class TransientVm:
 
         return new_args
 
-    def __allocate_random_port(self) -> int:
-        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-
-        # Binding to port 0 causes the kernel to allocate a port for us. Because
-        # it won't reuse that port until is _has_ to, this can safely be used
-        # as (for example) the ssh port for the guest and it 'should' be race-free
-        s.bind(("", 0))
-        addr = s.getsockname()
-        s.close()
-        return cast(int, addr[1])
-
     def __connect_ssh(self) -> int:
         assert(self.ssh_config is not None)
         assert(self.qemu_runner is not None)
@@ -99,6 +91,9 @@ class TransientVm:
     def __current_user(self) -> str:
         return pwd.getpwuid(os.getuid()).pw_name
 
+    def __qemu_guest_shutdown(self, event: qemu.QmpMessage) -> None:
+        logging.info("QEMU guest has shutdown. QMP event: {}".format(event))
+
     def __qemu_sigchld_handler(self, sig, frame) -> None:
         # We register this signal handler after the QEMU start, so these must not be None
         assert(self.qemu_runner is not None)
@@ -110,7 +105,6 @@ class TransientVm:
             # In this case, the processes that sent SIGCHLD was not QEMU
             return
         else:
-            logging.error("QEMU Process has died. Exiting")
             # According to the python docs, the exit_indicator is "a 16-bit number,
             # whose low byte is the signal number that killed the process, and whose
             # high byte is the exit status (if the signal number is zero); the high
@@ -118,10 +112,19 @@ class TransientVm:
             #
             # Therefore, we check if the least significant 7 bits are unset, and if
             # so, return the high byte. Otherwise, just return 1
-            if exit_indicator & 0x7f == 0:
-                sys.exit(exit_indicator >> 8)
+            signal_number = exit_indicator & 0x7f
+            if signal_number != 0:
+                exit_status = 1
             else:
-                sys.exit(1)
+                exit_status = exit_indicator >> 8
+
+            if self.qemu_should_die is True:
+                # We have reached a state where QEMU should be exiting (e.g., we have sent
+                # the system_shutdown QMP message). So don't error here.
+                logging.debug("QEMU process died as expected")
+            else:
+                logging.error("QEMU Process has died. Exiting")
+                sys.exit(exit_status)
 
     def run(self) -> int:
         # First, download and setup any required disks
@@ -156,6 +159,9 @@ class TransientVm:
             logging.error("QEMU Process has died. Exiting")
             sys.exit(qemu_returncode)
 
+        # Now wait until the QMP connection is established (this should be very fast)
+        self.qemu_runner.qmp_client.connect()
+
         for shared_spec in self.config.shared_folder:
             assert(self.ssh_config is not None)
             local, remote = shared_spec.split(":")
@@ -172,11 +178,40 @@ class TransientVm:
         if self.__needs_ssh_console():
             returncode = self.__connect_ssh()
 
-            # Once the ssh connection closes, terminate the VM
+            # In theory, we could get SIGCHLD from the QEMU process before getting or
+            # processing the SHUTDOWN event. So set this flag so we don't do the
+            # SIGCHLD exit.
+            self.qemu_should_die = True
+
+            # If we get a guest SHUTDOWN signal, invoke a callback to log it
+            self.qemu_runner.qmp_client.register_callback(
+                "SHUTDOWN", self.__qemu_guest_shutdown)
+
+            # Now actually request that the guest shutdown via ACPI
+            self.qemu_runner.qmp_client.send_sync(
+                {"execute": "system_powerdown"})
+
+            try:
+                # Wait a bit for the guest to finish the shutdown and QEMU to exit
+                self.qemu_runner.wait(timeout=self.config.shutdown_timeout)
+
+                # If QEMU terminates (as expected), retun the SSH exit code
+                return returncode
+            except subprocess.TimeoutExpired:
+                # if the timeout == 0, then the user expects the guest to not actually
+                # shutdown, so don't show an error here.
+                if self.config.shutdown_timeout > 0:
+                    logging.error(
+                        "Timeout expired while waiting for guest to shutdown (timeout={})"
+                        .format(self.config.shutdown_timeout))
+
+            # If we didn't reach the expected shutdown, this will terminte
+            # the VM. Otherwise, this does nothing.
             self.qemu_runner.terminate()
 
-            # Note that for ssh-console, we return the code of the ssh connection,
-            # not the qemu process
+            # Note that we always return the SSH exit code, even if the guest failed to
+            # shut down. This ensures the shutdown_timeout=0 case is handled as expected.
+            # (i.e., it returns the SSH code instead of a QEMU error)
             return returncode
         else:
             return self.qemu_runner.wait()

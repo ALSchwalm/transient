@@ -72,6 +72,10 @@ the default 22.
 - `-ssh-command COMMAND`: Instead of connecting standard input and output to the SSH
 connection with the virtual machine, pass `COMMAND` instead. (e.g., `ssh vagrant@vm-ip COMMAND`)
 
+- `-shutdown-timeout`: When the user exits an SSH console, `transient` sends an ACPI
+shutdown event and waits for this time for the guest to shutdown cleanly. After this
+timeout, the guest is terminated.
+
 - `-shared-folder FOLDERSPEC`: A `FOLDERSPEC` consists of two paths joined with a colon.
 For example `/path/on/host:/path/on/guest`. For additional information, see [Using
 Shared Folders](/examples/shared-folders/).
