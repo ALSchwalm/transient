@@ -6,7 +6,7 @@ from hamcrest import *
 # Wait for a while, as we may be downloading the image as well
 VM_WAIT_TIME=60 * 10
 if os.getenv("CI") is not None:
-    DEFAULT_TRANSIENT_ARGS = ["-ssh-timeout", "300"]
+    DEFAULT_TRANSIENT_ARGS = ["-ssh-timeout", "300", "-shutdown-timeout", "300"]
     DEFAULT_QEMU_ARGS = ["-m", "1G", "-smp", "2"]
 else:
     DEFAULT_TRANSIENT_ARGS = []
@@ -95,6 +95,7 @@ def step_impl(context):
     context.vm_config["ssh-with-serial"] = True
 
 @given('a ssh command "{command}"')
+@when('a new ssh command "{command}"')
 def step_impl(context, command):
     context.vm_config["ssh-command"] = command
 
