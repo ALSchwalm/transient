@@ -17,7 +17,7 @@ format:
 	autopep8 -r -i --max-line-length $(MAX_LINE_LENGTH) transient
 
 .PHONY: prep-release
-prep-release:
+prep-release: clean
 	python setup.py sdist bdist_wheel
 	twine check dist/*
 
@@ -39,3 +39,8 @@ test-%:
 .PHONY: docs
 docs:
 	mkdocs serve
+
+.PHONY: clean
+clean:
+	rm -rf sdist dist
+	make -C test clean
