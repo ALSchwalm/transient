@@ -214,7 +214,7 @@ class QemuRunner:
     args: List[str]
     quiet: bool
     proxy: Optional[QemuOutputProxy]
-    qmp_client: QmpClient
+    qmp_client: Optional[QmpClient]
 
     # As far as I can tell, this _has_ to be quoted. Otherwise, it will
     # fail at runtime because I guess something is actually run here and
@@ -223,19 +223,23 @@ class QemuRunner:
 
     def __init__(self, args: List[str], *, bin_name: Optional[str] = None,
                  qmp_port: Optional[int] = None, quiet: bool = False,
-                 silenceable: bool = False) -> None:
+                 silenceable: bool = False, qmp_connectable: bool = False) -> None:
         qmp_port = qmp_port or utils.allocate_random_port()
         self.bin_name = bin_name or self.__find_qemu_bin_name()
         self.quiet = quiet
-        self.args = self.__default_args(qmp_port) + args
+        self.args = args
         self.proc_handle = None
         self.proxy = None
-        self.qmp_client = QmpClient(qmp_port)
+        self.qmp_client = None
+
+        if qmp_connectable is True:
+            self.qmp_client = QmpClient(qmp_port)
+            self.args.extend(self.__default_qmp_args(qmp_port))
 
         if silenceable is True:
             self.proxy = QemuOutputProxy()
 
-    def __default_args(self, port) -> List[str]:
+    def __default_qmp_args(self, port) -> List[str]:
         return ["-qmp", "tcp:localhost:{},server,nowait".format(port)]
 
     def __find_qemu_bin_name(self) -> str:

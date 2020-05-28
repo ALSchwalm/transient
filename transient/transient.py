@@ -146,8 +146,12 @@ class TransientVm:
             else:
                 qemu_quiet, qemu_silenceable = True, False
 
+        # Note that we must _not_ use QMP if we aren't using the SSH connection, because
+        # passing the `-qmp` arg causes QEMU to terminate on SIGINT, even when in
+        # `-nographic` mode, which is very surprising.
         self.qemu_runner = qemu.QemuRunner(full_qemu_args, quiet=qemu_quiet,
-                                           silenceable=qemu_silenceable)
+                                           silenceable=qemu_silenceable,
+                                           qmp_connectable=self.__needs_ssh_console())
 
         qemu_proc = self.qemu_runner.start()
 
@@ -158,9 +162,6 @@ class TransientVm:
         if qemu_returncode is not None:
             logging.error("QEMU Process has died. Exiting")
             sys.exit(qemu_returncode)
-
-        # Now wait until the QMP connection is established (this should be very fast)
-        self.qemu_runner.qmp_client.connect()
 
         for shared_spec in self.config.shared_folder:
             assert(self.ssh_config is not None)
@@ -176,6 +177,10 @@ class TransientVm:
                                  local_user=self.__current_user())
 
         if self.__needs_ssh_console():
+            # Now wait until the QMP connection is established (this should be very fast).
+            assert(self.qemu_runner.qmp_client is not None)
+            self.qemu_runner.qmp_client.connect()
+
             returncode = self.__connect_ssh()
 
             # In theory, we could get SIGCHLD from the QEMU process before getting or

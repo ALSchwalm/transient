@@ -51,6 +51,7 @@ class SshConfig:
         return ["-o", "StrictHostKeyChecking=no",
                 "-o", "UserKnownHostsFile=/dev/null",
                 "-o", "batchMode=yes",
+                "-o", "LogLevel=ERROR",
                 "-o", "ConnectTimeout={}".format(SSH_DEFAULT_CONNECT_TIMEOUT)]
 
     def __find_ssh_bin_name(self) -> str:

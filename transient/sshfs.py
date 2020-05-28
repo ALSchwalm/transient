@@ -85,7 +85,7 @@ def _should_provision(is_provisioned: bool, error: str) -> bool:
 
 def provision_system(timeout: int, ssh_config: ssh.SshConfig, is_slow: bool) -> bool:
     provision_config = ssh_config.override(
-        args=["-T", "-o", "LogLevel=ERROR"] + ssh_config.args)
+        args=["-T"] + ssh_config.args)
 
     client = ssh.SshClient(config=provision_config,
                            command="cat /etc/os-release")
