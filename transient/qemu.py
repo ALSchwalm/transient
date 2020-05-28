@@ -170,8 +170,10 @@ class QemuOutputProxy:
         # that looks like a timestamp before we start actually proxying anything
         timestamp_matcher = re.compile(br'\[[ \d]+\.\d+\]')
 
-        while not self.quiet:
+        while True:
             ready, _, err = select.select([stdout_handle], [], [])
+            if self.quiet is True:
+                break
 
             if len(err) > 0:
                 raise RuntimeError("Error during select in QemuOutputProxy")
