@@ -5,7 +5,7 @@ import subprocess
 import time
 import tempfile
 
-from typing import Optional, List, IO, Any, Union
+from typing import Optional, List, IO, Any, Union, Dict
 
 try:
     import importlib.resources as pkg_resources
@@ -57,26 +57,11 @@ class SshConfig:
     def __find_ssh_bin_name(self) -> str:
         return "ssh"
 
-    def override(self,
-                 host: Optional[str] = None,
-                 port: Optional[int] = None,
-                 ssh_bin_name: Optional[str] = None,
-                 user: Optional[str] = None,
-                 password: Optional[str] = None,
-                 args: Optional[List[str]] = None) -> 'SshConfig':
+    def override(self, **kwargs: Any) -> 'SshConfig':
         clone = copy.deepcopy(self)
-        if host is not None:
-            clone.host = host
-        if port is not None:
-            clone.port = port
-        if ssh_bin_name is not None:
-            clone.ssh_bin_name = ssh_bin_name
-        if user is not None:
-            clone.user = user
-        if password is not None:
-            clone.password = password
-        if args is not None:
-            clone.args = args
+        if any([key not in self.__dict__ for key in kwargs.keys()]):
+            raise RuntimeError("Invalid key word arg to SshConfig.override")
+        clone.__dict__.update(kwargs)
         return clone
 
 
