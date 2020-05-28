@@ -48,11 +48,11 @@ class QmpClient:
         self.file.flush()
 
     def connect(self):
-        logging.info("Connecting to QMP socket at localhost:{}".format(self.port))
+        logging.info("Connecting to QMP socket at 127.0.0.1:{}".format(self.port))
         start = time.time()
         while time.time() - start < _QMP_CONNECTION_TIMEOUT:
             try:
-                self.sock = socket.create_connection(("localhost", self.port))
+                self.sock = socket.create_connection(("127.0.0.1", self.port))
                 logging.debug("QMP connection established")
 
                 # Make a file object so we can readline. QMP messages will always
@@ -76,7 +76,7 @@ class QmpClient:
                 logging.debug("QMP connection refused. Waiting")
                 time.sleep(_QMP_DELAY_BETWEEN)
         raise ConnectionRefusedError(
-            "Unable to connect to QMP socket at localhost:{}".format(self.port))
+            "Unable to connect to QMP socket at 127.0.0.1:{}".format(self.port))
 
     def __start(self):
         while True:
@@ -240,7 +240,7 @@ class QemuRunner:
             self.proxy = QemuOutputProxy()
 
     def __default_qmp_args(self, port) -> List[str]:
-        return ["-qmp", "tcp:localhost:{},server,nowait".format(port)]
+        return ["-qmp", "tcp:127.0.0.1:{},server,nowait".format(port)]
 
     def __find_qemu_bin_name(self) -> str:
         return 'qemu-system-x86_64'

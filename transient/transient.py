@@ -60,7 +60,7 @@ class TransientVm:
             else:
                 ssh_port = self.config.ssh_port
 
-            self.ssh_config = ssh.SshConfig(host="localhost",
+            self.ssh_config = ssh.SshConfig(host="127.0.0.1",
                                             port=ssh_port,
                                             user=self.config.ssh_user,
                                             ssh_bin_name=self.config.ssh_bin_name)
