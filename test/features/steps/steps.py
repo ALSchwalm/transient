@@ -14,37 +14,8 @@ else:
 
 def build_command(context):
     config = context.vm_config
-    command = ["transient", config["command"], *config["extra-transient-args"]]
-
-    if "name" in config:
-        command.extend(["-name", config["name"]])
-
-    if "images" in config:
-        command.extend(["-image", *config["images"]])
-
-    if "ssh-command" in config:
-        command.extend(["-ssh-command", config["ssh-command"]])
-
-    if "ssh-console" in config:
-        command.extend(["-ssh-console"])
-
-    if "prepare-only" in config:
-        command.extend(["-prepare-only"])
-
-    if "image-frontend" in config:
-        command.extend(["-image-frontend", config["image-frontend"]])
-
-    if "image-backend" in config:
-        command.extend(["-image-backend", config["image-backend"]])
-
-    if "shared-folder" in config:
-        command.extend(["-shared-folder", *config["shared-folder"]])
-
-    if "ssh-with-serial" in config:
-        command.extend(["-ssh-with-serial"])
-
-    command.extend(config["extra-qemu-args"])
-
+    command = ["transient", config["command"], *config["transient-args"]]
+    command.extend(["--", *config["qemu-args"]])
     return command
 
 def run_vm(context):
@@ -63,60 +34,60 @@ def wait_on_vm(context, timeout=VM_WAIT_TIME):
 def step_impl(context):
     context.vm_config = {
         "command": "run",
-        "extra-transient-args": DEFAULT_TRANSIENT_ARGS,
-        "extra-qemu-args": ["--", *DEFAULT_QEMU_ARGS],
+        "transient-args": list(DEFAULT_TRANSIENT_ARGS),
+        "qemu-args": list(DEFAULT_QEMU_ARGS),
     }
 
 @given('a transient delete command')
 def step_impl(context):
     context.vm_config = {
         "command": "delete",
-        "extra-transient-args": ["-force"],
-        "extra-qemu-args": [],
+        "transient-args": ["-force"],
+        "qemu-args": [],
     }
 
 @given('a name "{name}"')
 def step_impl(context, name):
-    context.vm_config["name"] = name
+    context.vm_config["transient-args"].extend(["-name", name])
 
 @given('a disk image "{image}"')
 def step_impl(context, image):
-    if "images" not in context.vm_config:
-        context.vm_config["images"] = [image]
-    else:
-        context.vm_config["images"].append(image)
+    context.vm_config["transient-args"].extend(["-image", image])
 
 @given('a ssh console')
 def step_impl(context):
-    context.vm_config["ssh-console"] = True
+    context.vm_config["transient-args"].extend(["-ssh-console"])
 
 @given('a ssh-with-serial console')
 def step_impl(context):
-    context.vm_config["ssh-with-serial"] = True
+    context.vm_config["transient-args"].extend(["-ssh-with-serial"])
 
 @given('a ssh command "{command}"')
 @when('a new ssh command "{command}"')
 def step_impl(context, command):
-    context.vm_config["ssh-command"] = command
+    context.vm_config["transient-args"].extend(["-ssh-command", command])
 
 @given('the vm is prepare-only')
 def step_impl(context):
-    context.vm_config["prepare-only"] = True
+    context.vm_config["transient-args"].extend(["-prepare-only"])
 
 @given('a frontend "{frontend}"')
 def step_impl(context, frontend):
+    context.vm_config["transient-args"].extend(["-image-frontend", frontend])
     context.vm_config["image-frontend"] = frontend
 
 @given('a backend "{backend}"')
 def step_impl(context, backend):
+    context.vm_config["transient-args"].extend(["-image-backend", backend])
     context.vm_config["image-backend"] = backend
 
-@given('a sshfs mount of "{}"')
+@given('a sshfs mount of "{mount}"')
 def step_impl(context, mount):
-    if "shared-folder" not in context.vm_config:
-        context.vm_config["shared-folder"] = [mount]
-    else:
-        context.vm_config["shared-folder"].append(mount)
+    context.vm_config["transient-args"].extend(["-shared-folder", mount])
+
+@given('a flag "{flag}"')
+def step_impl(context, flag):
+    context.vm_config["transient-args"].append(flag)
 
 @when('the vm runs to completion')
 @when('the transient command is run')
@@ -150,6 +121,10 @@ def step_impl(context, code):
 @then('stdout contains "{expected_stdout}"')
 def step_impl(context, expected_stdout):
     assert_that(context.stdout, contains_string(expected_stdout))
+
+@then('stderr contains "{expected_stderr}"')
+def step_impl(context, expected_stderr):
+    assert_that(context.stderr, contains_string(expected_stderr))
 
 @then('the file "{name}" is in the backend')
 def step_impl(context, name):
