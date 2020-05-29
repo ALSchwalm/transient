@@ -23,7 +23,7 @@ def prompt_yes_no(prompt: str, default: Optional[bool] = None) -> bool:
             print("Please select Y or N")
 
 
-def format_bytes(size):
+def format_bytes(size: float) -> str:
     power = 2**10
     n = 0
     labels = {0: '', 1: 'KiB', 2: 'MiB', 3: 'GiB', 4: 'TiB'}

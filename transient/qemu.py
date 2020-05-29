@@ -31,7 +31,7 @@ class QmpClient:
     event_callbacks: DefaultDict[str, List[QmpCallback]]
     current_id: int
 
-    def __init__(self, port: int):
+    def __init__(self, port: int) -> None:
         self.port = port
         self.id_callbacks = collections.defaultdict(list)
         self.event_callbacks = collections.defaultdict(list)
@@ -42,12 +42,12 @@ class QmpClient:
         self.current_id += 1
         return ret
 
-    def __send_msg(self, msg: QmpMessage):
+    def __send_msg(self, msg: QmpMessage) -> None:
         logging.debug("Sending QMP message: {}".format(msg))
         self.file.write((json.dumps(msg) + "\r\n").encode("utf-8"))
         self.file.flush()
 
-    def connect(self):
+    def connect(self) -> None:
         logging.info("Connecting to QMP socket at 127.0.0.1:{}".format(self.port))
         start = time.time()
         while time.time() - start < _QMP_CONNECTION_TIMEOUT:
@@ -78,7 +78,7 @@ class QmpClient:
         raise ConnectionRefusedError(
             "Unable to connect to QMP socket at 127.0.0.1:{}".format(self.port))
 
-    def __start(self):
+    def __start(self) -> None:
         while True:
             msg_json = self.file.readline()
             if msg_json is None or msg_json == b"":
@@ -95,7 +95,7 @@ class QmpClient:
                 for callback in self.event_callbacks[msg["event"]]:
                     callback(msg)
 
-    def send_async(self, msg: QmpMessage, callback: QmpCallback):
+    def send_async(self, msg: QmpMessage, callback: QmpCallback) -> None:
         id = self.__allocate_id()
         msg["id"] = id
         self.register_callback(id, callback)
@@ -110,7 +110,7 @@ class QmpClient:
         # this message has been received.
         semaphore = threading.Semaphore(value=0)
 
-        def _sync_callback(received: QmpMessage):
+        def _sync_callback(received: QmpMessage) -> None:
             nonlocal response
             response = received
 
@@ -127,7 +127,7 @@ class QmpClient:
         return response
 
     def register_callback(self, id_or_event: Union[int, str],
-                          callback: QmpCallback):
+                          callback: QmpCallback) -> None:
         if isinstance(id_or_event, int):
             self.id_callbacks[id_or_event].append(callback)
         elif isinstance(id_or_event, str):
@@ -142,22 +142,22 @@ class QemuOutputProxy:
     linux_has_started: bool
     buffer: bytes
 
-    def __init__(self):
+    def __init__(self) -> None:
         self.quiet = False
         self.buffer = b''
         self.linux_has_started = False
 
-    def silence(self):
+    def silence(self) -> None:
         self.quiet = True
 
-    def start(self, proc_handle: 'subprocess.Popen[bytes]'):
+    def start(self, proc_handle: 'subprocess.Popen[bytes]') -> None:
         # Start and drop this reference. Because the thread is a daemon it will
         # be killed when python dies
         thread = threading.Thread(target=self.__start, args=(proc_handle,))
         thread.daemon = True
         thread.start()
 
-    def __start(self, proc_handle: 'subprocess.Popen[bytes]'):
+    def __start(self, proc_handle: 'subprocess.Popen[bytes]') -> None:
         assert(proc_handle.stdout is not None)
 
         # Set the socket to be non-blocking, as we don't want to read in chuncks
@@ -241,7 +241,7 @@ class QemuRunner:
         if silenceable is True:
             self.proxy = QemuOutputProxy()
 
-    def __default_qmp_args(self, port) -> List[str]:
+    def __default_qmp_args(self, port: int) -> List[str]:
         return ["-qmp", "tcp:127.0.0.1:{},server,nowait".format(port)]
 
     def __find_qemu_bin_name(self) -> str:
@@ -273,7 +273,7 @@ class QemuRunner:
             self.proxy.start(self.proc_handle)
         return self.proc_handle
 
-    def silence(self):
+    def silence(self) -> None:
         if self.quiet is True:
             return
         elif self.proxy is not None:

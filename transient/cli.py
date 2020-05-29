@@ -12,7 +12,8 @@ from . import __version__
 from typing import List, Any, Optional, Union, Callable, Iterable
 
 
-def _get_version(ctx, param, value):
+def _get_version(ctx: click.Context, param: Union[click.Option, click.Parameter],
+                 value: Any) -> None:
     if not value:
         return
     click.echo(f"transient {__version__}",
@@ -29,7 +30,7 @@ _common_options = [
 ]
 
 
-def with_common_options(func):
+def with_common_options(func: Callable[..., Any]) -> Callable[..., Any]:
     for option in reversed(_common_options):
         func = option(func)
     return func
@@ -41,7 +42,7 @@ def with_common_options(func):
 @click.option("--version", help="Show the flask version",
               expose_value=False, callback=_get_version,
               is_flag=True, is_eager=True)
-def cli_entry(verbose: int):
+def cli_entry(verbose: int) -> None:
     log_level = logging.ERROR
     if verbose == 1:
         log_level = logging.WARNING
@@ -54,7 +55,7 @@ def cli_entry(verbose: int):
 
 
 class TransientRunCommand(click.Command):
-    def format_usage(self, ctx, formatter):
+    def format_usage(self, ctx: click.Context, formatter: click.HelpFormatter) -> None:
         formatter.write_usage(ctx.command_path, "[OPTIONS] -- [QEMU_ARGS]...")
 
     # Override the normal Command parser to use the Transient one
@@ -112,7 +113,7 @@ class TransientOptionParser(click.parser.OptionParser):
               help='Only download/create vm disks. Do not start the vm')
 @click.argument('QEMU_ARGS', nargs=-1)
 @cli_entry.command(name='run', cls=TransientRunCommand)
-def run_impl(**kwargs: Any):
+def run_impl(**kwargs: Any) -> None:
     """Run a transient virtual machine.
 
     QEMU_ARGS will be passed directly to QEMU.
@@ -130,7 +131,7 @@ def run_impl(**kwargs: Any):
 @click.option('-force', '-f', help='Do not prompt before deletion', is_flag=True)
 @click.option('-name', help='Delete images associated with the given vm name')
 @cli_entry.command('delete')
-def delete_impl(**kwargs: Any):
+def delete_impl(**kwargs: Any) -> None:
     """Delete transient disks"""
     args = argparse.Namespace(**kwargs)
     store = image.ImageStore(backend_dir=args.image_backend,
@@ -139,7 +140,7 @@ def delete_impl(**kwargs: Any):
 
     if len(images) == 0:
         print("No images match selection", file=sys.stderr)
-        return sys.exit(1)
+        sys.exit(1)
 
     print("The following images will be deleted:\n")
     frontend, backend = image.format_image_table(images)
@@ -156,19 +157,19 @@ def delete_impl(**kwargs: Any):
         response = True
 
     if response is False:
-        return sys.exit(0)
+        sys.exit(0)
 
     for image_info in images:
         logging.info("Deleting image at {}".format(image_info.path))
         store.delete_image(image_info)
-    return sys.exit(0)
+    sys.exit(0)
 
 
 @click.help_option('-h', '--help')
 @with_common_options
 @click.option('-name', help='List disks associated with the given vm name')
 @cli_entry.command('list')
-def list_impl(**kwargs: Any):
+def list_impl(**kwargs: Any) -> None:
     """List transient disk information"""
     args = argparse.Namespace(**kwargs)
     print(args)
@@ -178,7 +179,7 @@ def list_impl(**kwargs: Any):
 
     if len(images) == 0:
         print("No images match selection", file=sys.stderr)
-        return sys.exit(1)
+        sys.exit(1)
 
     frontend, backend = image.format_image_table(images)
     if len(frontend) > 0:
@@ -187,7 +188,7 @@ def list_impl(**kwargs: Any):
     if len(backend) > 0:
         print("\nBackend Images:")
         print(backend)
-    return sys.exit(0)
+    sys.exit(0)
 
 
 def _find_requested_images(store: image.ImageStore,
@@ -210,7 +211,7 @@ def _find_requested_images(store: image.ImageStore,
     return images
 
 
-def sigint_handler(sig, frame):
+def sigint_handler(sig: int, frame: Any) -> None:
     logging.warning("transient process received SIGINT")
     sys.exit(1)
 

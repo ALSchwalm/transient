@@ -44,7 +44,7 @@ class BaseImageInfo:
     path: str
     image_info: Dict[str, Any]
 
-    def __init__(self, store: 'ImageStore', path: str):
+    def __init__(self, store: 'ImageStore', path: str) -> None:
         stdout = subprocess.check_output([store.qemu_img_bin,
                                           "info", "-U", "--output=json", path])
         self.image_info = json.loads(stdout)
@@ -59,7 +59,7 @@ class BaseImageInfo:
 class BackendImageInfo(BaseImageInfo):
     identifier: str
 
-    def __init__(self, store: 'ImageStore', path: str):
+    def __init__(self, store: 'ImageStore', path: str) -> None:
         super().__init__(store, path)
         self.identifier = _storage_safe_decode(self.filename)
 
@@ -134,7 +134,7 @@ class ImageStore:
             logging.debug("Creating missing ImageStore frontend at '{}'".format(self.frontend))
             os.makedirs(self.frontend, exist_ok=True)
 
-    def __prepare_file_operation_bar(self, filesize):
+    def __prepare_file_operation_bar(self, filesize: int) -> progressbar.ProgressBar:
         return progressbar.ProgressBar(
             maxval=filesize,
             widgets=[

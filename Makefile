@@ -10,7 +10,7 @@ check-format:
 
 .PHONY: check-types
 check-types:
-	mypy transient
+	mypy --strict transient
 
 .PHONY: format
 format:

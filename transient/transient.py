@@ -94,7 +94,7 @@ class TransientVm:
     def __qemu_guest_shutdown(self, event: qemu.QmpMessage) -> None:
         logging.info("QEMU guest has shutdown. QMP event: {}".format(event))
 
-    def __qemu_sigchld_handler(self, sig, frame) -> None:
+    def __qemu_sigchld_handler(self, sig: int, frame: Any) -> None:
         # We register this signal handler after the QEMU start, so these must not be None
         assert(self.qemu_runner is not None)
         assert(self.qemu_runner.proc_handle is not None)

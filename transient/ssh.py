@@ -9,11 +9,11 @@ from typing import Optional, List, IO, Any, Union, Dict
 
 try:
     import importlib.resources as pkg_resources
-    _package_read_text = pkg_resources.read_text  # type: ignore
+    _package_read_text = pkg_resources.read_text
 except ImportError:
     # Try backported to PY<37 `importlib_resources`.
     import importlib_resources as pkg_resources  # type: ignore
-    _package_read_text = pkg_resources.read_text  # type: ignore
+    _package_read_text = pkg_resources.read_text
 
 from . import linux
 from . import vagrant_keys
