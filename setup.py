@@ -26,6 +26,7 @@ setup(
     packages=find_packages('.', exclude=["*.tests", "*.tests.*", "tests.*", "tests"]),
     install_requires=[
         "beautifultable==0.8.0",
+        "click==7.1.2",
         "importlib-resources==1.5.0",
         "progressbar2==3.51.3",
         "requests==2.23.0"

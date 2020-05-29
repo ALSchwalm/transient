@@ -136,7 +136,7 @@ class TransientVm:
         print("Finished preparation. Starting virtual machine")
 
         added_qemu_args = self.__qemu_added_devices()
-        full_qemu_args = added_qemu_args + self.config.qemu_args
+        full_qemu_args = added_qemu_args + list(self.config.qemu_args)
 
         # If we are using the SSH console, we need to do _something_ with QEMU output.
         qemu_quiet, qemu_silenceable = False, False
