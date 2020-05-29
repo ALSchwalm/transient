@@ -218,4 +218,9 @@ def sigint_handler(sig: int, frame: Any) -> None:
 
 def main() -> None:
     signal.signal(signal.SIGINT, sigint_handler)
+
+    # Click aggressively insists on having locales prior to python 3.7.
+    # This won't be the case inside docker, for example, so skip the
+    # check.
+    click.core._verify_python3_env = lambda: None  # type: ignore
     cli_entry()
