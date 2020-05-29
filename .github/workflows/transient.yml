@@ -22,7 +22,27 @@ jobs:
       run: |
         make check-types
 
-  Test:
+  Test-Container:
+    runs-on: ubuntu-18.04
+    container:
+      image: ubuntu:20.04
+      env:
+        DEBIAN_FRONTEND: noninteractive
+    steps:
+    - uses: actions/checkout@v2
+    - name: Install package dependencies
+      run: |
+        apt-get -y update
+        apt-get -y install ssh qemu qemu-utils qemu-system-x86 python3-pip
+    - name: Install python dependencies
+      run: |
+        python3 -m pip install --upgrade pip
+        python3 -m pip install -e '.[dev]'
+    - name: Run tests
+      run: |
+        make test-ci
+
+  Test-Multi-Python:
     runs-on: ubuntu-18.04
     strategy:
       matrix:
