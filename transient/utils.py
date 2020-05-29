@@ -1,4 +1,6 @@
 import distutils.util
+import logging
+import os
 import socket
 
 from typing import cast, Optional
@@ -43,3 +45,24 @@ def allocate_random_port() -> int:
     addr = s.getsockname()
     s.close()
     return cast(int, addr[1])
+
+
+_XDG_FALLBACK_DATA_PATH = "/tmp"
+
+
+def xdg_data_home() -> str:
+    user_home = os.getenv("HOME")
+    default_xdg_data_home = None
+    if user_home is not None:
+        default_xdg_data_home = os.path.join(user_home, ".local", "share")
+    xdg_data_home = os.getenv("XDG_DATA_HOME", default_xdg_data_home)
+
+    if xdg_data_home is None:
+        logging.warning("$HOME and $XDG_DATA_HOME not set. Using {}"
+                        .format(_XDG_FALLBACK_DATA_PATH))
+        xdg_data_home = _XDG_FALLBACK_DATA_PATH
+    return xdg_data_home
+
+
+def transient_data_home() -> str:
+    return os.path.join(xdg_data_home(), "transient")

@@ -39,7 +39,7 @@ def with_common_options(func: Callable[..., Any]) -> Callable[..., Any]:
 @click.group()
 @click.help_option('-h', '--help')
 @click.option('-v', '--verbose', count=True)
-@click.option("--version", help="Show the flask version",
+@click.option("--version", help="Show the transient version",
               expose_value=False, callback=_get_version,
               is_flag=True, is_eager=True)
 def cli_entry(verbose: int) -> None:

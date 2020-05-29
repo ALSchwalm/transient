@@ -1,5 +1,6 @@
 import copy
 import logging
+import os
 import signal
 import subprocess
 import time
@@ -16,6 +17,7 @@ except ImportError:
     _package_read_text = pkg_resources.read_text
 
 from . import linux
+from . import utils
 from . import vagrant_keys
 
 SSH_CONNECTION_WAIT_TIME = 30
@@ -68,23 +70,27 @@ class SshConfig:
 class SshClient:
     config: SshConfig
     command: Optional[str]
-    prepared_keys: Optional[List[str]]
 
     def __init__(self, config: SshConfig, *, command: Optional[str] = None):
         self.config = config
         self.command = command
-        self.prepared_keys = None
 
     def __prepare_builtin_keys(self) -> List[str]:
-        if self.prepared_keys is not None:
-            return self.prepared_keys
-        vagrant_priv = _package_read_text(vagrant_keys, 'vagrant')
-        _, vagrant_priv_file = tempfile.mkstemp()
-        with open(vagrant_priv_file, "w") as f:
-            f.write(vagrant_priv)
+        home = utils.transient_data_home()
+        key_destination = os.path.join(home, "vagrant.key")
+        if os.path.exists(key_destination):
+            return [key_destination]
 
-        self.prepared_keys = [vagrant_priv_file]
-        return self.prepared_keys
+        vagrant_priv = _package_read_text(vagrant_keys, 'vagrant')
+
+        # Set delete=False because we will be moving the file
+        with tempfile.NamedTemporaryFile(dir=home, delete=False) as f:
+            f.write(vagrant_priv.encode("utf-8"))
+
+            # The rename is done atomically, so even if we race with another
+            # processes, SSH will definitely get the full file contents
+            os.rename(f.name, key_destination)
+        return [key_destination]
 
     def __prepare_ssh_command(self, user_cmd: Optional[str] = None) -> List[str]:
         if self.config.user is not None:
