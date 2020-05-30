@@ -126,11 +126,11 @@ class ImageStore:
         self.qemu_img_bin = self.__default_qemu_img_bin()
 
         if not os.path.exists(self.backend):
-            logging.debug("Creating missing ImageStore backend at '{}'".format(self.backend))
+            logging.debug(f"Creating missing ImageStore backend at '{self.backend}'")
             os.makedirs(self.backend, exist_ok=True)
 
         if not os.path.exists(self.frontend):
-            logging.debug("Creating missing ImageStore frontend at '{}'".format(self.frontend))
+            logging.debug(f"Creating missing ImageStore frontend at '{self.frontend}'")
             os.makedirs(self.frontend, exist_ok=True)
 
     def __prepare_file_operation_bar(self, filesize: int) -> progressbar.ProgressBar:
@@ -172,16 +172,16 @@ class ImageStore:
         elif _BACKEND_IMAGE_REGEX.match(filename):
             return BackendImageInfo(self, path)
         else:
-            raise RuntimeError("Invalid image file name: '{}'".format(filename))
+            raise RuntimeError(f"Invalid image file name: '{filename}'")
 
     def __download_vagrant_info(self, image_name: str) -> Dict[str, Any]:
-        url = "https://app.vagrantup.com/api/v1/box/{}".format(image_name)
+        url = f"https://app.vagrantup.com/api/v1/box/{image_name}"
         response = requests.get(url, allow_redirects=True)
         try:
             response.raise_for_status()
         except requests.exceptions.HTTPError:
-            raise RuntimeError("Unable to download vagrant image '{}' info. Maybe invalid image?"
-                               .format(image_name))
+            raise RuntimeError(
+                f"Unable to download vagrant image '{image_name}' info. Maybe invalid image?")
         return cast(Dict[str, Any], json.loads(response.content))
 
     def __vagrant_box_url(self, version: str, box_info: Dict[str, Any]) -> str:
@@ -207,15 +207,14 @@ class ImageStore:
         if version.startswith("v"):
             version = version[1:]
 
-        logging.info("Download vagrant image: box_name={}, version={}".format(
-            box_name, version))
+        logging.info(f"Download vagrant image: box_name={box_name}, version={version}")
 
         box_info = self.__download_vagrant_info(box_name)
-        logging.debug("Vagrant box info: {}".format(box_info))
+        logging.debug(f"Vagrant box info: {box_info}")
 
         box_url = self.__vagrant_box_url(version, box_info)
 
-        print("Pulling from vagranthub: {}:{}".format(box_name, version))
+        print(f"Pulling from vagranthub: {box_name}:{version}")
 
         box_destination = destination + ".box"
 
@@ -224,7 +223,7 @@ class ImageStore:
         # call). So we use os.open to avoid the truncate.
         box_fd = os.open(box_destination, os.O_RDWR | os.O_CREAT)
 
-        logging.debug("Attempting to acquire lock of '{}'".format(box_destination))
+        logging.debug(f"Attempting to acquire lock of '{box_destination}'")
 
         # This will block if another transient process is doing the download. The lock must
         # be held until after the point where we atomically rename the extracted item to
@@ -238,7 +237,7 @@ class ImageStore:
             logging.info("Download in progress from another process. Waiting.")
             fcntl.flock(box_fd, fcntl.LOCK_EX)
 
-        logging.debug("Lock of '{}' now held".format(box_destination))
+        logging.debug(f"Lock of '{box_destination}' now held")
 
         # We now hold the lock. Either another process started the download/extraction
         # and died (or never started at all) or they completed. If the final file exists,
@@ -249,7 +248,7 @@ class ImageStore:
             return
 
         stream = requests.get(box_url, allow_redirects=True, stream=True)
-        logging.debug("Response headers: {}".format(stream.headers))
+        logging.debug(f"Response headers: {stream.headers}")
 
         stream.raise_for_status()
         total_length = progressbar.UnknownLength
@@ -305,16 +304,15 @@ class ImageStore:
         destination = os.path.join(self.backend, safe_name)
 
         if os.path.exists(destination):
-            logging.info("Image '{}' already exists. Skipping download".format(
-                image_identifier))
+            logging.info(f"Image '{image_identifier}' already exists. Skipping download")
             return BackendImageInfo(self, destination)
 
-        print("Unable to find image '{}' in backend".format(image_identifier))
+        print(f"Unable to find image '{image_identifier}' in backend")
 
         # For now, we only support vagrant images
         self.__download_vagrant_image(image_identifier, destination)
 
-        logging.info("Finished downloading image: {}".format(image_identifier))
+        logging.info(f"Finished downloading image: {image_identifier}")
         return BackendImageInfo(self, destination)
 
     def create_vm_image(self, image_name: str, vm_name: str, num: int) -> FrontendImageInfo:
@@ -322,21 +320,21 @@ class ImageStore:
         safe_vmname = _storage_safe_encode(vm_name)
         safe_image_identifier = _storage_safe_encode(backing_image.identifier)
         new_image_path = os.path.join(
-            self.frontend, "{}-{}-{}".format(safe_vmname, num, safe_image_identifier))
+            self.frontend, f"{safe_vmname}-{num}-{safe_image_identifier}")
 
         if os.path.exists(new_image_path):
-            logging.info("VM image '{}' already exists. Skipping create.".format(new_image_path))
+            logging.info(f"VM image '{new_image_path}' already exists. Skipping create.")
             return FrontendImageInfo(self, new_image_path)
 
-        logging.info("Creating VM Image '{}' from backing image '{}'".format(
-            new_image_path, backing_image.path))
+        logging.info(
+            f"Creating VM Image '{new_image_path}' from backing image '{backing_image.path}'")
 
         subprocess.check_output([self.qemu_img_bin,
                                  "create", "-f", "qcow2",
-                                 "-o", "backing_file={}".format(backing_image.path),
+                                 "-o", f"backing_file={backing_image.path}",
                                  new_image_path])
 
-        logging.info("VM Image '{}' created".format(new_image_path))
+        logging.info(f"VM Image '{new_image_path}' created")
         return FrontendImageInfo(self, new_image_path)
 
     def frontend_image_list(self, vm_name: Optional[str] = None,

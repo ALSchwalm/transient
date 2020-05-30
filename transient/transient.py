@@ -49,7 +49,7 @@ class TransientVm:
     def __qemu_added_devices(self) -> List[str]:
         new_args = []
         for image in self.vm_images:
-            new_args.extend(["-drive", "file={}".format(image.path)])
+            new_args.extend(["-drive", f"file={image.path}"])
 
         if self.__needs_ssh():
             if self.__needs_ssh_console():
@@ -68,7 +68,7 @@ class TransientVm:
             # the random localhost port or the user provided port to guest port 22
             new_args.extend([
                 "-netdev",
-                "user,id=transient-sshdev,hostfwd=tcp::{}-:22".format(ssh_port),
+                f"user,id=transient-sshdev,hostfwd=tcp::{ssh_port}-:22",
                 "-device",
                 "e1000,netdev=transient-sshdev"
             ])
@@ -92,7 +92,7 @@ class TransientVm:
         return pwd.getpwuid(os.getuid()).pw_name
 
     def __qemu_guest_shutdown(self, event: qemu.QmpMessage) -> None:
-        logging.info("QEMU guest has shutdown. QMP event: {}".format(event))
+        logging.info(f"QEMU guest has shutdown. QMP event: {event}")
 
     def __qemu_sigchld_handler(self, sig: int, frame: Any) -> None:
         # We register this signal handler after the QEMU start, so these must not be None

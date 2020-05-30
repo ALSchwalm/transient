@@ -160,7 +160,7 @@ def delete_impl(**kwargs: Any) -> None:
         sys.exit(0)
 
     for image_info in images:
-        logging.info("Deleting image at {}".format(image_info.path))
+        logging.info(f"Deleting image at {image_info.path}")
         store.delete_image(image_info)
     sys.exit(0)
 

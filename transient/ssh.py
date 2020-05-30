@@ -54,7 +54,7 @@ class SshConfig:
                 "-o", "UserKnownHostsFile=/dev/null",
                 "-o", "batchMode=yes",
                 "-o", "LogLevel=ERROR",
-                "-o", "ConnectTimeout={}".format(SSH_DEFAULT_CONNECT_TIMEOUT)]
+                "-o", f"ConnectTimeout={SSH_DEFAULT_CONNECT_TIMEOUT}"]
 
     def __find_ssh_bin_name(self) -> str:
         return "ssh"
@@ -94,7 +94,7 @@ class SshClient:
 
     def __prepare_ssh_command(self, user_cmd: Optional[str] = None) -> List[str]:
         if self.config.user is not None:
-            host = "{}@{}".format(self.config.user, self.config.host)
+            host = f"{self.config.user}@{self.config.host}"
         else:
             host = self.config.host
 
@@ -144,7 +144,7 @@ class SshClient:
             if returncode == 255:
                 _, raw_stderr = proc.communicate()
                 stderr = raw_stderr.decode("utf-8").strip()
-                logging.info("SSH connection failed: {}".format(stderr))
+                logging.info(f"SSH connection failed: {stderr}")
                 # In many cases, the command will fail quickly. Avoid spamming tries
                 time.sleep(SSH_CONNECTION_TIME_BETWEEN_TRIES)
                 continue
@@ -167,10 +167,9 @@ class SshClient:
             else:
                 # If the process exited within SSH_CONNECTION_WAIT_TIME seconds with
                 # any other return code, that's an exception.
-                raise RuntimeError("ssh connection failed with return code: {}".format(
-                    returncode))
-        raise RuntimeError("Failed to connect with command '{}' after {} seconds".format(
-            probe_command, timeout))
+                raise RuntimeError(f"ssh connection failed with return code: {returncode}")
+        raise RuntimeError(
+            f"Failed to connect with command '{probe_command}' after {timeout} seconds")
 
     def connect_stdout(self, timeout: int) -> 'subprocess.Popen[bytes]':
         return self.__timed_connection(timeout)

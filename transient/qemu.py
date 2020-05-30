@@ -43,12 +43,12 @@ class QmpClient:
         return ret
 
     def __send_msg(self, msg: QmpMessage) -> None:
-        logging.debug("Sending QMP message: {}".format(msg))
+        logging.debug(f"Sending QMP message: {msg}")
         self.file.write((json.dumps(msg) + "\r\n").encode("utf-8"))
         self.file.flush()
 
     def connect(self) -> None:
-        logging.info("Connecting to QMP socket at 127.0.0.1:{}".format(self.port))
+        logging.info(f"Connecting to QMP socket at 127.0.0.1:{self.port}")
         start = time.time()
         while time.time() - start < _QMP_CONNECTION_TIMEOUT:
             try:
@@ -76,7 +76,7 @@ class QmpClient:
                 logging.debug("QMP connection refused. Waiting")
                 time.sleep(_QMP_DELAY_BETWEEN)
         raise ConnectionRefusedError(
-            "Unable to connect to QMP socket at 127.0.0.1:{}".format(self.port))
+            f"Unable to connect to QMP socket at 127.0.0.1:{self.port}")
 
     def __start(self) -> None:
         while True:
@@ -85,7 +85,7 @@ class QmpClient:
                 logging.debug("QEMU closed QMP connection")
                 return
             msg = json.loads(msg_json)
-            logging.debug("Received QMP message: {}".format(msg))
+            logging.debug(f"Received QMP message: {msg}")
             if "id" in msg:
                 for callback in self.id_callbacks[msg["id"]]:
                     callback(msg)
@@ -134,7 +134,7 @@ class QmpClient:
             self.event_callbacks[id_or_event].append(callback)
         else:
             raise RuntimeError(
-                "Invalid argument to register_callback '{}'".format(id_or_event))
+                f"Invalid argument to register_callback '{id_or_event}'")
 
 
 class QemuOutputProxy:
@@ -242,14 +242,13 @@ class QemuRunner:
             self.proxy = QemuOutputProxy()
 
     def __default_qmp_args(self, port: int) -> List[str]:
-        return ["-qmp", "tcp:127.0.0.1:{},server,nowait".format(port)]
+        return ["-qmp", f"tcp:127.0.0.1:{port},server,nowait"]
 
     def __find_qemu_bin_name(self) -> str:
         return 'qemu-system-x86_64'
 
     def start(self) -> 'subprocess.Popen[bytes]':
-        logging.info("Starting qemu process '{}' with arguments '{}'".format(
-            self.bin_name, self.args))
+        logging.info(f"Starting qemu process '{self.bin_name}' with arguments '{self.args}'")
 
         # By default, perform no redirection
         stdin, stdout, stderr = None, None, None

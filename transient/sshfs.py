@@ -46,7 +46,7 @@ def _do_provision(timeout: int, provision_config: ssh.SshConfig,
     client = ssh.SshClient(config=provision_config)
     conn = client.connect_piped(timeout)
 
-    print("Starting provision of {} type system".format(system_type))
+    print(f"Starting provision of {system_type} type system")
 
     try:
         provision_timeout = _PROVISION_TIME
@@ -58,10 +58,10 @@ def _do_provision(timeout: int, provision_config: ssh.SshConfig,
         stdout = raw_stdout.decode("utf-8").strip()
         stderr = raw_stderr.decode("utf-8").strip()
 
-        logging.debug("Provisioning output:\n{}".format(stdout))
+        logging.debug(f"Provisioning output:\n{stdout}")
 
         if returncode != 0:
-            raise RuntimeError("Error while provisioning system: {}".format(stderr))
+            raise RuntimeError(f"Error while provisioning system: {stderr}")
         else:
             print("Provisioning completed")
             return True
@@ -71,9 +71,9 @@ def _do_provision(timeout: int, provision_config: ssh.SshConfig,
         stdout = raw_stdout.decode("utf-8").strip()
         stderr = raw_stderr.decode("utf-8").strip()
 
-        logging.debug("Provisioning output before timeout:\n{}".format(stdout))
+        logging.debug(f"Provisioning output before timeout:\n{stdout}")
 
-        raise RuntimeError("Timeout while executing provisioning commands: {}".format(stderr))
+        raise RuntimeError(f"Timeout while executing provisioning commands: {stderr}")
 
 
 def _should_provision(is_provisioned: bool, error: str) -> bool:
@@ -96,13 +96,13 @@ def provision_system(timeout: int, ssh_config: ssh.SshConfig, is_slow: bool) -> 
     stderr = raw_stderr.decode("utf-8").strip()
 
     if returncode != 0:
-        logging.info("Failed to read /etc/os-release: {}".format(stderr))
+        logging.info(f"Failed to read /etc/os-release: {stderr}")
         return False
 
-    logging.debug("Guest /etc/os-release: {}".format(stdout))
+    logging.debug(f"Guest /etc/os-release: {stdout}")
 
     candidates = _parse_os_release(stdout)
-    logging.debug("Possible system types: {}".format(candidates))
+    logging.debug(f"Possible system types: {candidates}")
 
     script = None
     candidate = None
@@ -133,10 +133,10 @@ def do_sshfs_mount(*, connect_timeout: int, local_dir: str, remote_dir: str,
 
     try:
         sshfs_options = "-o StrictHostKeyChecking=no -o allow_other"
-        sshfs_command = "sudo -E sshfs {options} {user}@10.0.2.2:{local} {remote}".format(
-            options=sshfs_options, user=local_user, local=local_dir, remote=remote_dir)
+        sshfs_command = \
+            f"sudo -E sshfs {sshfs_options} {local_user}@10.0.2.2:{local_dir} {remote_dir}"
 
-        logging.info("Sending sshfs mount command '{}'".format(sshfs_command))
+        logging.info(f"Sending sshfs mount command '{sshfs_command}'")
 
         sshfs_timeout = _SSHFS_MAX_RUN_TIME
         if is_slow is True:
@@ -157,14 +157,13 @@ def do_sshfs_mount(*, connect_timeout: int, local_dir: str, remote_dir: str,
         # terminate the connection.
         #
         # See http://www.snailbook.com/faq/background-jobs.auto.html for some more info.
-        _, raw_stderr = conn.communicate(input="""
+        _, raw_stderr = conn.communicate(input=f"""
           set -e
           sudo mkdir -p {remote_dir}
           {sshfs_command}
           echo TRANSIENT_SSHFS_DONE
           exit
-        """.format(remote_dir=remote_dir, sshfs_command=sshfs_command).encode('utf-8'),
-            timeout=sshfs_timeout)
+        """.encode('utf-8'), timeout=sshfs_timeout)
 
         # Ensure returncode is set
         conn.poll()
@@ -180,7 +179,7 @@ def do_sshfs_mount(*, connect_timeout: int, local_dir: str, remote_dir: str,
         # Check whether this failure looks like it is the result of the vm being
         # unprovisioned
         if _should_provision(is_provisioned, stderr) is False:
-            raise RuntimeError("SSHFS mount failed with: {}".format(stderr))
+            raise RuntimeError(f"SSHFS mount failed with: {stderr}")
 
         # If so, try to provision it
         success = provision_system(connect_timeout, ssh_config, is_slow)
@@ -191,8 +190,7 @@ def do_sshfs_mount(*, connect_timeout: int, local_dir: str, remote_dir: str,
                            local_password=local_password, ssh_config=ssh_config,
                            is_provisioned=True)
         else:
-            raise RuntimeError("Unable to provision and SSHFS mount failed with: {}".format(
-                stderr))
+            raise RuntimeError(f"Unable to provision and SSHFS mount failed with: {stderr}")
     except subprocess.TimeoutExpired:
         # The timeout expired (as expected), but because we 'set -e', this means
         # we must be in the state where we're hanging after the logout. So kill
@@ -208,7 +206,7 @@ def do_sshfs_mount(*, connect_timeout: int, local_dir: str, remote_dir: str,
             if is_slow:
                 # We timed out without getting to the 'echo' in the script, even with
                 # extra time. Just give up.
-                raise RuntimeError("SSHFS mount timed out: {}".format(stderr))
+                raise RuntimeError(f"SSHFS mount timed out: {stderr}")
             else:
                 logging.warning("sshfs mount did not complete. Trying with longer timeout")
                 # Try again with a longer timeout. The system may just be extremely
