@@ -5,12 +5,13 @@ from . import ssh
 from . import sshfs
 
 import argparse
+import enum
 import logging
 import os
 import pwd
 import signal
 import subprocess
-import sys
+import uuid
 
 from typing import cast, Optional, List, Dict, Any, Union, TYPE_CHECKING
 
@@ -21,6 +22,20 @@ if TYPE_CHECKING:
     Environ = os._Environ[str]
 else:
     Environ = os._Environ
+
+
+class TransientProcessError(Exception):
+    returncode: int
+
+    def __init__(self, returncode: int):
+        self.returncode = returncode
+
+
+@enum.unique
+class TransientVmState(enum.Enum):
+    WAITING = 1,
+    RUNNING = 2,
+    FINISHED = 3,
 
 
 class TransientVm:
@@ -38,9 +53,14 @@ class TransientVm:
         self.ssh_config = None
         self.qemu_runner = None
         self.qemu_should_die = False
+        self.name = self.config.name or self.__generate_tmp_name()
+        self.state = TransientVmState.WAITING
+
+    def __generate_tmp_name(self) -> str:
+        return str(uuid.uuid4())
 
     def __create_images(self, names: List[str]) -> List[image.FrontendImageInfo]:
-        return [self.store.create_vm_image(image_name, self.config.name, idx)
+        return [self.store.create_vm_image(image_name, self.name, idx)
                 for idx, image_name in enumerate(names)]
 
     def __needs_ssh(self) -> bool:
@@ -175,8 +195,16 @@ class TransientVm:
         assert(self.qemu_runner is not None)
         assert(self.qemu_runner.proc_handle is not None)
 
+        # Once we no longer have a QEMU processes (i.e., the VM is 'finished'), it
+        # is an error to waitpid on the QEMU pid. However, we may still receive
+        # SIGCHLD during image cleanup for example (from the qemu-img calls). So,
+        # just return in this case.
+        if self.state == TransientVmState.FINISHED:
+            return
+
         # We are only interested in the death of the QEMU child
         pid, exit_indicator = os.waitpid(self.qemu_runner.proc_handle.pid, os.WNOHANG)
+
         if (pid, exit_indicator) == (0, 0):
             # In this case, the processes that sent SIGCHLD was not QEMU
             return
@@ -199,10 +227,35 @@ class TransientVm:
                 # the system_shutdown QMP message). So don't error here.
                 logging.debug("QEMU process died as expected")
             else:
-                logging.error("QEMU Process has died. Exiting")
-                sys.exit(exit_status)
+                logging.error("QEMU Process has died")
 
-    def run(self) -> int:
+                # NOTE: this will raise an exception if the exit_status is non-zero.
+                # otherwise, it will just return None. Because this is a signal handler,
+                # returning from this function will not cause the 'run' call to exit.
+                self.__post_run(exit_status)
+
+    def __post_run(self, returncode: int) -> None:
+        self.state = TransientVmState.FINISHED
+
+        if self.__needs_to_copy_out_files_after_running():
+            self.__copy_out_files()
+
+        # If the config name is None, this is a completely temporary VM,
+        # so remove the frontend images
+        if self.config.name is None:
+            logging.info("Cleaning up temporary vm images")
+            tmp_images = self.store.frontend_image_list(vm_name=self.name)
+            for image in tmp_images:
+                self.store.delete_image(image)
+
+        if returncode != 0:
+            logging.debug(f"VM exited with non-zero code: {returncode}")
+            raise TransientProcessError(returncode)
+        return None
+
+    def run(self) -> None:
+        self.state = TransientVmState.RUNNING
+
         # First, download and setup any required disks
         self.vm_images = self.__create_images(self.config.image)
 
@@ -210,7 +263,7 @@ class TransientVm:
             self.__copy_in_files()
 
         if self.config.prepare_only is True:
-            return 0
+            return self.__post_run(0)
 
         print("Finished preparation. Starting virtual machine")
 
@@ -240,7 +293,7 @@ class TransientVm:
         qemu_returncode = qemu_proc.poll()
         if qemu_returncode is not None:
             logging.error("QEMU Process has died. Exiting")
-            sys.exit(qemu_returncode)
+            return self.__post_run(qemu_returncode)
 
         for shared_spec in self.config.shared_folder:
             assert(self.ssh_config is not None)
@@ -294,10 +347,10 @@ class TransientVm:
                 # the VM. Otherwise, this does nothing.
                 self.qemu_runner.terminate()
 
+            # Note that we always return the SSH exit code, even if the guest failed to
+            # shut down. This ensures the shutdown_timeout=0 case is handled as expected.
+            # (i.e., it returns the SSH code instead of a QEMU error)
+            return self.__post_run(returncode)
         else:
             returncode = self.qemu_runner.wait()
-
-        if self.__needs_to_copy_out_files_after_running():
-            self.__copy_out_files()
-
-        return returncode
+            return self.__post_run(returncode)

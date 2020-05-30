@@ -86,7 +86,7 @@ def step_impl(context, backend):
 def step_impl(context, mount):
     context.vm_config["transient-args"].extend(["-shared-folder", mount])
 
-@given('a flag "{flag}"')
+@given('a transient flag "{flag}"')
 def step_impl(context, flag):
     context.vm_config["transient-args"].append(flag)
 
@@ -120,6 +120,10 @@ def step_impl(context):
             context.vm_config['guest-path'],
             context.vm_config['host-directory'])
     context.vm_config["transient-args"].extend(["-copy-out-after", directory_mapping])
+
+@given('a qemu flag "{flag}"')
+def step_impl(context, flag):
+    context.vm_config["qemu-args"].append(flag)
 
 @when('the vm runs to completion')
 @when('the transient command is run')

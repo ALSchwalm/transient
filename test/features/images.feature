@@ -5,7 +5,6 @@ Feature: Image Support
 
  Scenario: Download a single image
     Given a transient vm
-      And a name "test-vm"
       And a disk image "generic/alpine38:v3.0.2"
       And the vm is prepare-only
      When the transient command is run
@@ -23,7 +22,6 @@ Feature: Image Support
 
  Scenario: Set a custom backend
     Given a transient vm
-      And a name "test-vm"
       And a disk image "generic/alpine38:v3.0.2"
       And a backend "./artifacts/test-backend"
       And the vm is prepare-only

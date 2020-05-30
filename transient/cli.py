@@ -100,7 +100,7 @@ class TransientOptionParser(click.parser.OptionParser):
 @click.option('-copy-out-after', '-a', multiple=True,
               help='Copy a file or directory out of the VM after running ' +
               '(/absolute/path/on/VM:path/on/host)')
-@click.option('-name', help='Delete images associated with the given vm name', required=True)
+@click.option('-name', help='Delete images associated with the given vm name')
 @click.option('-ssh-console', '-ssh', is_flag=True,
               help='Use an ssh connection instead of the serial console')
 @click.option('-ssh-with-serial', '-sshs', is_flag=True,
@@ -128,8 +128,12 @@ def run_impl(**kwargs: Any) -> None:
     store = image.ImageStore(backend_dir=args.image_backend,
                              frontend_dir=args.image_frontend)
     trans = transient.TransientVm(config=args, store=store)
-    returncode = trans.run()
-    sys.exit(returncode)
+
+    try:
+        trans.run()
+        sys.exit(0)
+    except transient.TransientProcessError as e:
+        sys.exit(e.returncode)
 
 
 @click.help_option('-h', '--help')

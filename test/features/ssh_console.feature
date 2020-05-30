@@ -5,7 +5,6 @@ Feature: SSH Console
 
   Scenario: Run VM with a single SSH command
     Given a transient vm
-      And a name "test-vm"
       And a disk image "generic/alpine38:v3.0.2"
       And a ssh command "echo 'ssh-command working'"
      When the vm runs to completion
@@ -14,7 +13,6 @@ Feature: SSH Console
 
   Scenario: Run VM with a SSH console
     Given a transient vm
-      And a name "test-vm"
       And a disk image "generic/alpine38:v3.0.2"
       And a ssh console
      When the vm runs
@@ -30,7 +28,6 @@ Feature: SSH Console
 
   Scenario: Run VM with SSH and serial console
     Given a transient vm
-      And a name "test-vm"
       And a disk image "centos/7:2004.01"
       And a ssh-with-serial console
      When the vm runs

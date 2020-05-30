@@ -34,12 +34,11 @@ with `libvirt` based tools becoming 'unsynchronized' with the real system state.
 For example, in the following command, the flags before the `--` are passed to
 `transient`. The remaining arguments are passed directly to QEMU. This example
 will cause `transient` to download and run a Centos7 VM (from the Vagrant Cloud)
-with 1GB of memory using a text console. The `name` parameter is used to allow
-subsequent invocations to use the same disk image, so changes will persist.
+with 1GB of memory using a text console. This virtual machine will be automatically
+shut down on exit and its disk will be destroyed.
 
 ```
 transient run \
-   -name test-vm \
    -image centos/7:2004.01 \
    -- \
    -nographic -enable-kvm -m 1G
@@ -48,11 +47,11 @@ transient run \
 `transient` also supports a `vagrant` style SSH connection. This will start the
 virtual machine and connect standard input and output to an SSH connection
 with the machine, instead of the serial console. However, when this connection
-is closed, the machine will be terminated (unlike `vagrant`). For example:
+is closed, the machine will be automatically shut down (unlike `vagrant`). For
+example:
 
 ```
 transient run \
-   -name test-vm \
    -ssh-console \
    -image centos/7:2004.01 \
    -- \

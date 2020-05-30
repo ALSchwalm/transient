@@ -14,6 +14,9 @@ significant of these are:
 
 - **VM Name**: The virtual machine name is used to associate a virtual
 disk created during one invocation of `transient` with future invocations.
+If no VM Name is provided, one will be generated automatically. In this case,
+the per-vm 'Frontend' disk described below will be automatically destroyed
+when `transient` exits.
 
 - **Disk Backend**: When a new virtual disk type is specified (e.g.,
 the vagrant `centos/7:2004.01` box), the disk image will be downloaded and

@@ -6,7 +6,6 @@ Feature: SSH Console
   @skip-in-ci
   Scenario: Run VM with a single SSHFS mount
     Given a transient vm
-      And a name "test-vm"
       And a disk image "centos/7:2004.01"
       And a sshfs mount of "sync:/mnt"
       And a ssh command "ls /mnt"
