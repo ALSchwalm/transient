@@ -121,8 +121,8 @@ class ImageStore:
     def __init__(self, *, backend_dir: Optional[str] = None,
                  frontend_dir: Optional[str] = None) -> None:
 
-        self.backend = backend_dir or self.__default_backend_dir()
-        self.frontend = frontend_dir or self.__default_frontend_dir()
+        self.backend = os.path.abspath(backend_dir or self.__default_backend_dir())
+        self.frontend = os.path.abspath(frontend_dir or self.__default_frontend_dir())
         self.qemu_img_bin = self.__default_qemu_img_bin()
 
         if not os.path.exists(self.backend):
