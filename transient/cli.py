@@ -182,7 +182,6 @@ def delete_impl(**kwargs: Any) -> None:
 def list_impl(**kwargs: Any) -> None:
     """List transient disk information"""
     args = argparse.Namespace(**kwargs)
-    print(args)
     store = image.ImageStore(backend_dir=args.image_backend,
                              frontend_dir=args.image_frontend)
     images = _find_requested_images(store, args)
