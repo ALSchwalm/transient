@@ -9,10 +9,11 @@ import re
 import requests
 import subprocess
 import tarfile
+import tempfile
 import urllib.parse
 
 from . import utils
-from typing import cast, Optional, List, Dict, Any, Union, Tuple
+from typing import cast, Optional, List, Dict, Any, Union, Tuple, IO, Pattern
 
 
 _BLOCK_TRANSFER_SIZE = 64 * 1024  # 64KiB
@@ -32,6 +33,223 @@ def _storage_safe_encode(name: str) -> str:
 
 def _storage_safe_decode(name: str) -> str:
     return urllib.parse.unquote(name)
+
+
+def _prepare_file_operation_bar(filesize: int) -> progressbar.ProgressBar:
+    return progressbar.ProgressBar(
+        maxval=filesize,
+        widgets=[
+            progressbar.Percentage(),
+            ' ',
+            progressbar.Bar(),
+            ' ',
+            progressbar.FileTransferSpeed(),
+            ' | ',
+            progressbar.DataSize(),
+            ' | ',
+            progressbar.ETA(),
+        ])
+
+
+class BaseImageProtocol:
+    def __init__(self, regex: Pattern[str]) -> None:
+        self.regex = regex
+
+    def matches(self, candidate: str) -> bool:
+        return self.regex.match(candidate) is not None
+
+    def retrieve_image(self, store: 'ImageStore', spec: 'ImageSpec', destination: str) -> None:
+        temp_destination = destination + ".part"
+        fd = self.__lock_backend_destination(temp_destination)
+
+        # We now hold the lock. Either another process started the retrieval
+        # and died (or never started at all) or they completed. If the final file exists,
+        # the must have completed successfully so just return.
+        if os.path.exists(destination):
+            logging.info("Retrieval completed by another processes. Skipping.")
+            os.close(fd)
+            return None
+
+        with os.fdopen(fd, 'wb+') as temp_file:
+            self._do_retrieve_image(store, spec, temp_file)
+
+            # Now that the entire file is retrieved, atomically move it to the destination.
+            # This avoids issues where a process was killed in the middle of retrieval
+            os.rename(temp_destination, destination)
+
+    def _do_retrieve_image(self, store: 'ImageStore', spec: 'ImageSpec',
+                           destination: IO[bytes]) -> None:
+        raise RuntimeError("Protocol did not implement '_do_retrieve_image'")
+
+    def _copy_with_progress(self, bar: progressbar.ProgressBar, source: IO[bytes],
+                            destination: IO[bytes]) -> None:
+        for idx in itertools.count():
+            block = source.read(_BLOCK_TRANSFER_SIZE)
+            if not block:
+                break
+            destination.write(block)
+            bar.update(idx * _BLOCK_TRANSFER_SIZE)
+        bar.finish()
+
+    def __lock_backend_destination(self, dest: str) -> int:
+        # By default, python 'open' call will truncate writable files. We can't allow that
+        # as we don't yet hold the flock (and there is no way to open _and_ flock in one
+        # call). So we use os.open to avoid the truncate.
+        fd = os.open(dest, os.O_RDWR | os.O_CREAT)
+
+        logging.debug(f"Attempting to acquire lock of '{dest}'")
+
+        # This will block if another transient process is doing the retrieval. Once this
+        # function returns, the lock is held until 'fd' is closed.
+        try:
+            # First attempt to acquire the lock non-blocking
+            fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except OSError:
+            # OSError indicates the lock is held by someone else. Print a notice and then
+            # block.
+            logging.info(f"Retrieval of '{dest}' already in progress. Waiting.")
+            fcntl.flock(fd, fcntl.LOCK_EX)
+
+        logging.debug(f"Lock of '{dest}' acquired")
+
+        return fd
+
+
+class VagrantImageProtocol(BaseImageProtocol):
+    def __init__(self) -> None:
+        super().__init__(re.compile(r"vagrant", re.IGNORECASE))
+
+    def __download_vagrant_info(self, image_name: str) -> Dict[str, Any]:
+        url = f"https://app.vagrantup.com/api/v1/box/{image_name}"
+        response = requests.get(url, allow_redirects=True)
+        try:
+            response.raise_for_status()
+        except requests.exceptions.HTTPError:
+            raise RuntimeError(
+                f"Unable to download vagrant image '{image_name}' info. Maybe invalid image?")
+        return cast(Dict[str, Any], json.loads(response.content))
+
+    def __vagrant_box_url(self, version: str, box_info: Dict[str, Any]) -> str:
+        for version_info in box_info["versions"]:
+            if version_info["version"] != version:
+                continue
+            for provider in version_info["providers"]:
+                # TODO: we should also support 'qemu'
+                if provider["name"] != "libvirt":
+                    continue
+
+                download_url = provider["download_url"]
+                assert(isinstance(download_url, str))
+                return download_url
+        raise RuntimeError("No version '{}' available for {} with provider libvirt"
+                           .format(version, box_info["tag"]))
+
+    def _do_retrieve_image(self, store: 'ImageStore', spec: 'ImageSpec',
+                           destination: IO[bytes]) -> None:
+        box_name, version = spec.source.split(":", 1)
+
+        # For convenience, allow the user to specify the version with a v,
+        # but that isn't how the API reports it
+        if version.startswith("v"):
+            version = version[1:]
+
+        logging.info(f"Download vagrant image: box_name={box_name}, version={version}")
+
+        box_info = self.__download_vagrant_info(box_name)
+        logging.debug(f"Vagrant box info: {box_info}")
+
+        box_url = self.__vagrant_box_url(version, box_info)
+
+        print(f"Pulling from vagranthub: {box_name}:{version}")
+
+        stream = requests.get(box_url, allow_redirects=True, stream=True)
+        logging.debug(f"Response headers: {stream.headers}")
+
+        stream.raise_for_status()
+        total_length = progressbar.UnknownLength
+        if "content-length" in stream.headers:
+            total_length = int(stream.headers["content-length"])
+
+        box_file = tempfile.TemporaryFile()
+
+        # Do the actual download
+        bar = _prepare_file_operation_bar(total_length)
+        for idx, block in enumerate(stream.iter_content(_BLOCK_TRANSFER_SIZE)):
+            box_file.write(block)
+            bar.update(idx * _BLOCK_TRANSFER_SIZE)
+        bar.finish()
+        box_file.flush()
+        box_file.seek(0)
+
+        print("Download completed. Starting image extraction.")
+
+        # libvirt boxes _should_ just be tar.gz files with a box.img file, but some
+        # images put these in subdirectories. Try to detect that.
+        with tarfile.open(fileobj=box_file, mode="r") as tar:
+            image_info = [info for info in tar.getmembers()
+                          if info.name.endswith("box.img")][0]
+            in_stream = tar.extractfile(image_info.name)
+            assert(in_stream is not None)
+
+            bar = _prepare_file_operation_bar(image_info.size)
+            self._copy_with_progress(bar, in_stream, destination)
+
+        logging.info("Image extraction completed.")
+
+
+class FrontendImageProtocol(BaseImageProtocol):
+    def __init__(self) -> None:
+        super().__init__(re.compile(r"frontend", re.IGNORECASE))
+
+    def _do_retrieve_image(self, store: 'ImageStore', spec: 'ImageSpec',
+                           destination: IO[bytes]) -> None:
+        vm_name, source = spec.source.split("@", 1)
+
+        print(f"Copying image '{source}' for VM '{vm_name}' as new backend '{spec.name}'")
+
+        candidates = store.frontend_image_list(vm_name, source)
+        if len(candidates) == 0:
+            raise RuntimeError(f"No backend image '{source}' for VM '{vm_name}'")
+        elif len(candidates) > 1:
+            # This should be impossible, but check anyway
+            raise RuntimeError(f"Ambiguous backend image '{source}' for VM '{vm_name}'")
+        frontend_image = candidates[0]
+        with open(frontend_image.path, "rb") as existing_file:
+            bar = _prepare_file_operation_bar(frontend_image.actual_size)
+            self._copy_with_progress(bar, existing_file, destination)
+
+        logging.info("Image copy complete.")
+
+
+_IMAGE_SPEC = re.compile(r"^([^,]+?)(?:,(.+?)=(.+))?$")
+_IMAGE_PROTOCOLS = [
+    VagrantImageProtocol(),
+    FrontendImageProtocol()
+]
+
+
+class ImageSpec:
+    name: str
+    source_proto: BaseImageProtocol
+    source: str
+
+    def __init__(self, spec: str) -> None:
+        parsed = _IMAGE_SPEC.match(spec)
+        if parsed is None:
+            raise RuntimeError(f"Invalid image spec '{spec}'")
+        self.name, proto, self.source = parsed.groups()
+
+        # If no protocol is specified, use vagrant
+        if proto is None:
+            self.source_proto = VagrantImageProtocol()
+            self.source = self.name
+            return
+
+        for protocol in _IMAGE_PROTOCOLS:
+            if protocol.matches(proto):
+                self.source_proto = protocol
+                return
+        raise RuntimeError(f"Unknown image source protocol '{proto}'")
 
 
 class BaseImageInfo:
@@ -133,21 +351,6 @@ class ImageStore:
             logging.debug(f"Creating missing ImageStore frontend at '{self.frontend}'")
             os.makedirs(self.frontend, exist_ok=True)
 
-    def __prepare_file_operation_bar(self, filesize: int) -> progressbar.ProgressBar:
-        return progressbar.ProgressBar(
-            maxval=filesize,
-            widgets=[
-                progressbar.Percentage(),
-                ' ',
-                progressbar.Bar(),
-                ' ',
-                progressbar.FileTransferSpeed(),
-                ' | ',
-                progressbar.DataSize(),
-                ' | ',
-                progressbar.ETA(),
-            ])
-
     def __default_backend_dir(self) -> str:
         env_specified = os.getenv("TRANSIENT_BACKEND")
         if env_specified is not None:
@@ -174,149 +377,24 @@ class ImageStore:
         else:
             raise RuntimeError(f"Invalid image file name: '{filename}'")
 
-    def __download_vagrant_info(self, image_name: str) -> Dict[str, Any]:
-        url = f"https://app.vagrantup.com/api/v1/box/{image_name}"
-        response = requests.get(url, allow_redirects=True)
-        try:
-            response.raise_for_status()
-        except requests.exceptions.HTTPError:
-            raise RuntimeError(
-                f"Unable to download vagrant image '{image_name}' info. Maybe invalid image?")
-        return cast(Dict[str, Any], json.loads(response.content))
-
-    def __vagrant_box_url(self, version: str, box_info: Dict[str, Any]) -> str:
-        for version_info in box_info["versions"]:
-            if version_info["version"] != version:
-                continue
-            for provider in version_info["providers"]:
-                # TODO: we should also support 'qemu'
-                if provider["name"] != "libvirt":
-                    continue
-
-                download_url = provider["download_url"]
-                assert(isinstance(download_url, str))
-                return download_url
-        raise RuntimeError("No version '{}' available for {} with provider libvirt"
-                           .format(version, box_info["tag"]))
-
-    def __download_vagrant_image(self, image_identifier: str, destination: str) -> None:
-        box_name, version = image_identifier.split(":")
-
-        # For convenience, allow the user to specify the version with a v,
-        # but that isn't how the API reports it
-        if version.startswith("v"):
-            version = version[1:]
-
-        logging.info(f"Download vagrant image: box_name={box_name}, version={version}")
-
-        box_info = self.__download_vagrant_info(box_name)
-        logging.debug(f"Vagrant box info: {box_info}")
-
-        box_url = self.__vagrant_box_url(version, box_info)
-
-        print(f"Pulling from vagranthub: {box_name}:{version}")
-
-        box_destination = destination + ".box"
-
-        # By default, python 'open' call will truncate writable files. We can't allow that
-        # as we don't yet hold the flock (and there is no way to open _and_ flock in one
-        # call). So we use os.open to avoid the truncate.
-        box_fd = os.open(box_destination, os.O_RDWR | os.O_CREAT)
-
-        logging.debug(f"Attempting to acquire lock of '{box_destination}'")
-
-        # This will block if another transient process is doing the download. The lock must
-        # be held until after the point where we atomically rename the extracted item to
-        # its final name.
-        try:
-            # First attempt to acquire the lock non-blocking
-            fcntl.flock(box_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
-        except OSError:
-            # OSError indicates the lock is held by someone else. Print a notice and then
-            # block.
-            logging.info("Download in progress from another process. Waiting.")
-            fcntl.flock(box_fd, fcntl.LOCK_EX)
-
-        logging.debug(f"Lock of '{box_destination}' now held")
-
-        # We now hold the lock. Either another process started the download/extraction
-        # and died (or never started at all) or they completed. If the final file exists,
-        # the must have completed successfully so just return.
-        if os.path.exists(destination):
-            logging.info("Download completed by another processes. Skipping.")
-            os.close(box_fd)
-            return
-
-        stream = requests.get(box_url, allow_redirects=True, stream=True)
-        logging.debug(f"Response headers: {stream.headers}")
-
-        stream.raise_for_status()
-        total_length = progressbar.UnknownLength
-        if "content-length" in stream.headers:
-            total_length = int(stream.headers["content-length"])
-
-        # Convenience wrapper around the fd
-        box_file = os.fdopen(box_fd, 'wb+')
-
-        # Do the actual download
-        bar = self.__prepare_file_operation_bar(total_length)
-        for idx, block in enumerate(stream.iter_content(_BLOCK_TRANSFER_SIZE)):
-            box_file.write(block)
-            bar.update(idx * _BLOCK_TRANSFER_SIZE)
-        bar.finish()
-        box_file.flush()
-        box_file.seek(0)
-
-        print("Download completed. Starting image extraction.")
-
-        # libvirt boxes _should_ just be tar.gz files with a box.img file, but some
-        # images put these in subdirectories. Try to detect that.
-        part_destination = destination + ".part"
-        with tarfile.open(fileobj=box_file, mode="r") as tar:
-            image_info = [info for info in tar.getmembers()
-                          if info.name.endswith("box.img")][0]
-            in_stream = tar.extractfile(image_info.name)
-            assert(in_stream is not None)
-
-            out_stream = open(part_destination, 'wb')
-
-            bar = self.__prepare_file_operation_bar(image_info.size)
-            for idx in itertools.count():
-                block = in_stream.read(_BLOCK_TRANSFER_SIZE)
-                if not block:
-                    break
-                out_stream.write(block)
-                bar.update(idx * _BLOCK_TRANSFER_SIZE)
-            bar.finish()
-
-        logging.info("Image extraction completed.")
-
-        # Now that the entire file is extracted, atomically move it to the destination.
-        # This avoids issues where a process was killed in the middle of extracting.
-        os.rename(part_destination, destination)
-
-        # And clean up the box
-        os.remove(box_destination)
-        box_file.close()
-
-    def retrieve_image(self, image_identifier: str) -> BackendImageInfo:
-        safe_name = _storage_safe_encode(image_identifier)
+    def retrieve_image(self, image_spec: str, vm_name: str) -> BackendImageInfo:
+        spec = ImageSpec(image_spec)
+        safe_name = _storage_safe_encode(spec.name)
         destination = os.path.join(self.backend, safe_name)
 
         if os.path.exists(destination):
-            logging.info(f"Image '{image_identifier}' already exists. Skipping download")
+            logging.info(f"Image '{spec.name}' already exists. Skipping retrieval")
             return BackendImageInfo(self, destination)
 
-        print(f"Unable to find image '{image_identifier}' in backend")
+        print(f"Unable to find image '{spec.name}' in backend")
 
-        # For now, we only support vagrant images
-        self.__download_vagrant_image(image_identifier, destination)
+        spec.source_proto.retrieve_image(self, spec, destination)
 
-        logging.info(f"Finished downloading image: {image_identifier}")
+        logging.info(f"Finished retrieving image: {spec.name}")
         return BackendImageInfo(self, destination)
 
-    def create_vm_image(self, image_name: str, vm_name: str, num: int) -> FrontendImageInfo:
-        backing_image = self.retrieve_image(image_name)
+    def create_vm_image(self, image_spec: str, vm_name: str, num: int) -> FrontendImageInfo:
+        backing_image = self.retrieve_image(image_spec, vm_name)
         safe_vmname = _storage_safe_encode(vm_name)
         safe_image_identifier = _storage_safe_encode(backing_image.identifier)
         new_image_path = os.path.join(

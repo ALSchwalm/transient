@@ -29,6 +29,25 @@ Feature: Image Support
      Then the return code is 0
       And the file "generic%2Falpine38%3Av3.0.2" is in the backend
 
+ Scenario: Use an image with the 'base' image spec
+    Given a transient vm
+      And a frontend "./artifacts/test-frontend"
+      And a backend "./artifacts/test-backend"
+      And a disk image "newimage,frontend=test-vm@generic/alpine38:v3.0.2"
+      And the vm is prepare-only
+     When the transient command is run
+     Then the return code is 0
+      And the file "newimage" is in the backend
+
+Scenario: Use an image with nonexistent base spec
+    Given a transient vm
+      And a frontend "./artifacts/test-frontend"
+      And a backend "./artifacts/test-backend"
+      And a disk image "anothernewimage,frontend=test-vm@notexist"
+      And the vm is prepare-only
+     When the transient command is run
+     Then the return code is 1
+
  Scenario: Delete a frontend image
     Given a transient delete command
       And a name "test-vm"
