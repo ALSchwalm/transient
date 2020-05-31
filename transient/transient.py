@@ -142,8 +142,9 @@ class TransientVm:
             subprocess.run(['virt-copy-out', '-a', vm_image.path, vm_absolute_path, host_directory],
                            env=environment)
 
-    def __qemu_added_devices(self) -> List[str]:
-        new_args = []
+    def __qemu_added_args(self) -> List[str]:
+        new_args = ["-name", self.name]
+
         for image in self.vm_images:
             new_args.extend(["-drive", f"file={image.path}"])
 
@@ -267,7 +268,7 @@ class TransientVm:
 
         print("Finished preparation. Starting virtual machine")
 
-        added_qemu_args = self.__qemu_added_devices()
+        added_qemu_args = self.__qemu_added_args()
         full_qemu_args = added_qemu_args + list(self.config.qemu_args)
 
         # If we are using the SSH console, we need to do _something_ with QEMU output.
