@@ -36,34 +36,25 @@ def with_common_options(func: Callable[..., Any]) -> Callable[..., Any]:
     return func
 
 
-@click.group()
-@click.help_option('-h', '--help')
-@click.option('-v', '--verbose', count=True)
-@click.option("--version", help="Show the transient version",
-              expose_value=False, callback=_get_version,
-              is_flag=True, is_eager=True)
-def cli_entry(verbose: int) -> None:
-    log_level = logging.ERROR
-    if verbose == 1:
-        log_level = logging.WARNING
-    elif verbose == 2:
-        log_level = logging.INFO
-    elif verbose >= 3:
-        log_level = logging.DEBUG
-    logging.basicConfig(level=log_level, format='%(asctime)s:%(levelname)s:%(message)s',
-                        datefmt='%Y-%m-%d %H:%M:%S')
+def _make_option_parser(cmd: click.Command, ctx: click.Context) -> click.parser.OptionParser:
+    # Override the normal Command parser to use the Transient one
+    parser = TransientOptionParser(ctx)
+    for param in cmd.get_params(ctx):
+        param.add_to_parser(parser, ctx)
+    return parser
+
+
+class TransientGroup(click.Group):
+    def make_parser(self, ctx: click.Context) -> click.parser.OptionParser:
+        return _make_option_parser(self, ctx)
 
 
 class TransientRunCommand(click.Command):
     def format_usage(self, ctx: click.Context, formatter: click.HelpFormatter) -> None:
         formatter.write_usage(ctx.command_path, "[OPTIONS] -- [QEMU_ARGS]...")
 
-    # Override the normal Command parser to use the Transient one
     def make_parser(self, ctx: click.Context) -> click.parser.OptionParser:
-        parser = TransientOptionParser(ctx)
-        for param in self.get_params(ctx):
-            param.add_to_parser(parser, ctx)
-        return parser
+        return _make_option_parser(self, ctx)
 
 
 class TransientOptionParser(click.parser.OptionParser):
@@ -90,6 +81,24 @@ class TransientOptionParser(click.parser.OptionParser):
         norm_long_opt = click.parser.normalize_opt(long_opt, self.ctx)
 
         self._match_long_opt(norm_long_opt, explicit_value, state)  # type: ignore
+
+
+@click.group(cls=TransientGroup)
+@click.help_option('-h', '--help')
+@click.option('-v', '--verbose', count=True)
+@click.option("--version", help="Show the transient version",
+              expose_value=False, callback=_get_version,
+              is_flag=True, is_eager=True)
+def cli_entry(verbose: int) -> None:
+    log_level = logging.ERROR
+    if verbose == 1:
+        log_level = logging.WARNING
+    elif verbose == 2:
+        log_level = logging.INFO
+    elif verbose >= 3:
+        log_level = logging.DEBUG
+    logging.basicConfig(level=log_level, format='%(asctime)s:%(levelname)s:%(message)s',
+                        datefmt='%Y-%m-%d %H:%M:%S')
 
 
 @click.help_option('-h', '--help')
