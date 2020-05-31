@@ -221,10 +221,37 @@ class FrontendImageProtocol(BaseImageProtocol):
         logging.info("Image copy complete.")
 
 
+class HttpImageProtocol(BaseImageProtocol):
+    def __init__(self) -> None:
+        super().__init__(re.compile(r"http", re.IGNORECASE))
+
+    def _do_retrieve_image(self, store: 'ImageStore', spec: 'ImageSpec',
+                           destination: IO[bytes]) -> None:
+
+        print(f"Downloading image from '{spec.source}'")
+
+        stream = requests.get(spec.source, allow_redirects=True, stream=True)
+        logging.debug(f"Response headers: {stream.headers}")
+
+        stream.raise_for_status()
+        total_length = progressbar.UnknownLength
+        if "content-length" in stream.headers:
+            total_length = int(stream.headers["content-length"])
+
+        bar = _prepare_file_operation_bar(total_length)
+        for idx, block in enumerate(stream.iter_content(_BLOCK_TRANSFER_SIZE)):
+            destination.write(block)
+            bar.update(idx * _BLOCK_TRANSFER_SIZE)
+        bar.finish()
+
+        logging.info("Download complete.")
+
+
 _IMAGE_SPEC = re.compile(r"^([^,]+?)(?:,(.+?)=(.+))?$")
 _IMAGE_PROTOCOLS = [
     VagrantImageProtocol(),
-    FrontendImageProtocol()
+    FrontendImageProtocol(),
+    HttpImageProtocol()
 ]
 
 
