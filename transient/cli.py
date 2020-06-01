@@ -94,6 +94,12 @@ class TransientOptionParser(click.parser.OptionParser):
 
 @click.help_option('-h', '--help')
 @with_common_options
+@click.option('-copy-in-before', '-b', multiple=True,
+              help='Copy a file or directory into the VM before running ' + \
+              '(path/on/host:/absolute/path/on/guest)')
+@click.option('-copy-out-after', '-a', multiple=True,
+              help='Copy a file or directory out of the VM after running ' + \
+              '(/absolute/path/on/VM:path/on/host)')
 @click.option('-name', help='Delete images associated with the given vm name', required=True)
 @click.option('-ssh-console', '-ssh', is_flag=True,
               help='Use an ssh connection instead of the serial console')
