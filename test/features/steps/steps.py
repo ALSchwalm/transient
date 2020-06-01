@@ -4,8 +4,6 @@ import subprocess
 from behave import *
 from hamcrest import *
 
-PATH_TO_IMAGE_STORE = f'{os.environ["HOME"]}/.local/share/transient/'
-
 # Wait for a while, as we may be downloading the image as well
 VM_WAIT_TIME=60 * 10
 if os.getenv("CI") is not None:
@@ -32,9 +30,6 @@ def wait_on_vm(context, timeout=VM_WAIT_TIME):
     context.handle.wait(timeout)
     context.stdout = context.handle.stdout.read().decode('utf-8')
     context.stderr = context.handle.stderr.read().decode('utf-8')
-
-def get_deepest_directory_name(directory):
-    return directory.split('/')[-2]
 
 @given('a transient vm')
 def step_impl(context):
@@ -95,26 +90,34 @@ def step_impl(context, mount):
 def step_impl(context, flag):
     context.vm_config["transient-args"].append(flag)
 
+@given('a guest test file: "{}"')
 @given('a guest directory: "{}"')
-def step_impl(context, guest_directory):
-    context.vm_config["guest-directory"] = guest_directory
+def step_impl(context, guest_path):
+    context.vm_config["guest-path"] = guest_path
+
+@given('a test file: "{}/{}"')
+def step_impl(context, host_directory, test_file_name):
+    os.makedirs(host_directory, exist_ok=True)
+    test_file_path = os.path.join(host_directory, test_file_name)
+    open(test_file_path, 'w').close()
+    context.vm_config["test-file"] = test_file_path
 
 @given('a host directory: "{}"')
 def step_impl(context, host_directory):
     context.vm_config["host-directory"] = host_directory
     os.makedirs(host_directory, exist_ok=True)
 
-@given('the host directory is copied to the guest directory before starting')
+@given('the test file is copied to the guest directory before starting')
 def step_impl(context):
     directory_mapping = '{}:{}'.format(
-            context.vm_config['host-directory'],
-            context.vm_config['guest-directory'])
+            context.vm_config['test-file'],
+            context.vm_config['guest-path'])
     context.vm_config["transient-args"].extend(["-copy-in-before", directory_mapping])
 
-@given('the guest directory is copied to the host directory after stopping')
+@given('the guest test file is copied to the host directory after stopping')
 def step_impl(context):
     directory_mapping = '{}:{}'.format(
-            context.vm_config['guest-directory'],
+            context.vm_config['guest-path'],
             context.vm_config['host-directory'])
     context.vm_config["transient-args"].extend(["-copy-out-after", directory_mapping])
 
@@ -175,32 +178,6 @@ def step_impl(context, name):
     items = os.listdir(context.vm_config["image-frontend"])
     assert_that(items, not_(has_item(name)))
 
-@then('the host directory exists in the guest directory')
-def step_impl(context):
-
-    guest_directory = context.vm_config['guest-directory']
-    mirrored_guest_directory = os.path.join('artifacts', 'guest')
-    os.makedirs(mirrored_guest_directory, exist_ok=True)
-
-    image_path = os.path.join(PATH_TO_IMAGE_STORE,'test-vm-0-generic_alpine38_v3.0.2')
-
-    subprocess.check_output(['virt-copy-out',
-            '-a', image_path,
-             guest_directory,
-             mirrored_guest_directory])
-
-    host_directory = context.vm_config['host-directory']
-    host_directory = get_deepest_directory_name(host_directory)
-    guest_directory = get_deepest_directory_name(guest_directory)
-    copied_host_directory = os.path.join(mirrored_guest_directory, guest_directory, host_directory)
-
-    assert os.path.exists(copied_host_directory)
-
-@then('the guest directory exists in the host directory')
-def step_impl(context):
-    host_directory = context.vm_config['host-directory']
-    guest_directory = context.vm_config['guest-directory']
-    guest_directory = get_deepest_directory_name(guest_directory)
-    copied_guest_directory = os.path.join(host_directory, guest_directory)
-
-    assert os.path.exists(copied_guest_directory)
+@then('the file "{file_path}" exists')
+def step_impl(context, file_path):
+    assert os.path.exists(file_path)

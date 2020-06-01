@@ -22,4 +22,4 @@ behave-ci:
 
 .PHONY: clean
 clean:
-	rm -rf test-frontend test-backend
+	rm -rf artifacts
