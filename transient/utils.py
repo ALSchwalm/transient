@@ -26,9 +26,9 @@ def prompt_yes_no(prompt: str, default: Optional[bool] = None) -> bool:
 
 
 def format_bytes(size: float) -> str:
-    power = 2**10
+    power = 2 ** 10
     n = 0
-    labels = {0: '', 1: 'KiB', 2: 'MiB', 3: 'GiB', 4: 'TiB'}
+    labels = {0: "", 1: "KiB", 2: "MiB", 3: "GiB", 4: "TiB"}
     while size > power:
         size /= power
         n += 1
@@ -58,7 +58,9 @@ def xdg_data_home() -> str:
     xdg_data_home = os.getenv("XDG_DATA_HOME", default_xdg_data_home)
 
     if xdg_data_home is None:
-        logging.warning(f"$HOME and $XDG_DATA_HOME not set. Using {_XDG_FALLBACK_DATA_PATH}")
+        logging.warning(
+            f"$HOME and $XDG_DATA_HOME not set. Using {_XDG_FALLBACK_DATA_PATH}"
+        )
         xdg_data_home = _XDG_FALLBACK_DATA_PATH
     return xdg_data_home
 

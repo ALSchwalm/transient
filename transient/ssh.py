@@ -10,10 +10,12 @@ from typing import Optional, List, IO, Any, Union, Dict
 
 try:
     import importlib.resources as pkg_resources
+
     _package_read_text = pkg_resources.read_text
 except ImportError:
     # Try backported to PY<37 `importlib_resources`.
     import importlib_resources as pkg_resources  # type: ignore
+
     _package_read_text = pkg_resources.read_text
 
 from . import linux
@@ -36,9 +38,15 @@ class SshConfig:
     user: Optional[str]
     password: Optional[str]
 
-    def __init__(self, host: str, port: Optional[int], ssh_bin_name: Optional[str],
-                 user: Optional[str] = None, password: Optional[str] = None,
-                 args: Optional[List[str]] = None) -> None:
+    def __init__(
+        self,
+        host: str,
+        port: Optional[int],
+        ssh_bin_name: Optional[str],
+        user: Optional[str] = None,
+        password: Optional[str] = None,
+        args: Optional[List[str]] = None,
+    ) -> None:
         self.host = host
         self.port = port if port is not None else 22
         self.user = user
@@ -50,16 +58,23 @@ class SshConfig:
         self.args.extend(self.__default_ssh_args())
 
     def __default_ssh_args(self) -> List[str]:
-        return ["-o", "StrictHostKeyChecking=no",
-                "-o", "UserKnownHostsFile=/dev/null",
-                "-o", "batchMode=yes",
-                "-o", "LogLevel=ERROR",
-                "-o", f"ConnectTimeout={SSH_DEFAULT_CONNECT_TIMEOUT}"]
+        return [
+            "-o",
+            "StrictHostKeyChecking=no",
+            "-o",
+            "UserKnownHostsFile=/dev/null",
+            "-o",
+            "batchMode=yes",
+            "-o",
+            "LogLevel=ERROR",
+            "-o",
+            f"ConnectTimeout={SSH_DEFAULT_CONNECT_TIMEOUT}",
+        ]
 
     def __find_ssh_bin_name(self) -> str:
         return "ssh"
 
-    def override(self, **kwargs: Any) -> 'SshConfig':
+    def override(self, **kwargs: Any) -> "SshConfig":
         clone = copy.deepcopy(self)
         if any([key not in self.__dict__ for key in kwargs.keys()]):
             raise RuntimeError("Invalid key word arg to SshConfig.override")
@@ -81,7 +96,7 @@ class SshClient:
         if os.path.exists(key_destination):
             return [key_destination]
 
-        vagrant_priv = _package_read_text(vagrant_keys, 'vagrant')
+        vagrant_priv = _package_read_text(vagrant_keys, "vagrant")
 
         # Set delete=False because we will be moving the file
         with tempfile.NamedTemporaryFile(dir=home, delete=False) as f:
@@ -110,10 +125,13 @@ class SshClient:
 
         return command
 
-    def __timed_connection(self, timeout: int,
-                           ssh_stdin: Optional[_FILE] = None,
-                           ssh_stdout: Optional[_FILE] = None,
-                           ssh_stderr: Optional[_FILE] = None) -> 'subprocess.Popen[bytes]':
+    def __timed_connection(
+        self,
+        timeout: int,
+        ssh_stdin: Optional[_FILE] = None,
+        ssh_stdout: Optional[_FILE] = None,
+        ssh_stderr: Optional[_FILE] = None,
+    ) -> "subprocess.Popen[bytes]":
         probe_command = self.__prepare_ssh_command()
         real_command = self.__prepare_ssh_command(self.command)
 
@@ -130,10 +148,10 @@ class SshClient:
                 stdin=subprocess.DEVNULL,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
-
                 # Automatically send SIGTERM to this process when the main Transient
                 # process dies
-                preexec_fn=lambda: linux.set_death_signal(signal.SIGTERM))
+                preexec_fn=lambda: linux.set_death_signal(signal.SIGTERM),
+            )
 
             # Wait for quite a while, as slow systems (like qemu with a single
             # core and no '-enable-kvm') can take a long time
@@ -154,28 +172,35 @@ class SshClient:
                 # another that's connected to the requested stdout/stderr
                 proc.terminate()
 
-                logging.info("Connecting to SSH using command '{}'".format(
-                    " ".join(real_command)))
+                logging.info(
+                    "Connecting to SSH using command '{}'".format(" ".join(real_command))
+                )
 
                 proc = subprocess.Popen(
                     real_command,
                     stdin=ssh_stdin,
                     stdout=ssh_stdout,
                     stderr=ssh_stderr,
-                    preexec_fn=lambda: linux.set_death_signal(signal.SIGTERM))
+                    preexec_fn=lambda: linux.set_death_signal(signal.SIGTERM),
+                )
                 return proc
             else:
                 # If the process exited within SSH_CONNECTION_WAIT_TIME seconds with
                 # any other return code, that's an exception.
-                raise RuntimeError(f"ssh connection failed with return code: {returncode}")
+                raise RuntimeError(
+                    f"ssh connection failed with return code: {returncode}"
+                )
         raise RuntimeError(
-            f"Failed to connect with command '{probe_command}' after {timeout} seconds")
+            f"Failed to connect with command '{probe_command}' after {timeout} seconds"
+        )
 
-    def connect_stdout(self, timeout: int) -> 'subprocess.Popen[bytes]':
+    def connect_stdout(self, timeout: int) -> "subprocess.Popen[bytes]":
         return self.__timed_connection(timeout)
 
-    def connect_piped(self, timeout: int) -> 'subprocess.Popen[bytes]':
-        return self.__timed_connection(timeout,
-                                       ssh_stdin=subprocess.PIPE,
-                                       ssh_stdout=subprocess.PIPE,
-                                       ssh_stderr=subprocess.PIPE)
+    def connect_piped(self, timeout: int) -> "subprocess.Popen[bytes]":
+        return self.__timed_connection(
+            timeout,
+            ssh_stdin=subprocess.PIPE,
+            ssh_stdout=subprocess.PIPE,
+            ssh_stderr=subprocess.PIPE,
+        )

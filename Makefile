@@ -6,7 +6,7 @@ check: check-format check-types
 
 .PHONY: check-format
 check-format:
-	pycodestyle --max-line-length $(MAX_LINE_LENGTH) transient
+	black -l 90 --check transient test
 
 .PHONY: check-types
 check-types:
@@ -14,7 +14,7 @@ check-types:
 
 .PHONY: format
 format:
-	autopep8 -r -i --max-line-length $(MAX_LINE_LENGTH) transient
+	black -l 90 transient test
 
 .PHONY: prep-release
 prep-release: clean

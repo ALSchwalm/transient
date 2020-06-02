@@ -61,9 +61,7 @@ class QmpClient:
                 self.file = self.sock.makefile("rwb")
 
                 # Go ahead and enable sending commands
-                self.__send_msg({
-                    "execute": "qmp_capabilities"
-                })
+                self.__send_msg({"execute": "qmp_capabilities"})
 
                 # Start and drop this reference. Because the thread is a daemon it will
                 # be killed when python dies
@@ -76,7 +74,8 @@ class QmpClient:
                 logging.debug("QMP connection refused. Waiting")
                 time.sleep(_QMP_DELAY_BETWEEN)
         raise ConnectionRefusedError(
-            f"Unable to connect to QMP socket at 127.0.0.1:{self.port}")
+            f"Unable to connect to QMP socket at 127.0.0.1:{self.port}"
+        )
 
     def __start(self) -> None:
         while True:
@@ -101,8 +100,9 @@ class QmpClient:
         self.register_callback(id, callback)
         self.__send_msg(msg)
 
-    def send_sync(self, msg: QmpMessage,
-                  timeout: Optional[float] = QMP_DEFAULT_SYNC_TIME) -> QmpMessage:
+    def send_sync(
+        self, msg: QmpMessage, timeout: Optional[float] = QMP_DEFAULT_SYNC_TIME
+    ) -> QmpMessage:
         response = None
 
         # Start the semaphore value at zero to this thread will block. The callback
@@ -123,18 +123,18 @@ class QmpClient:
         self.send_async(msg, _sync_callback)
         semaphore.acquire(timeout=timeout)  # type: ignore
 
-        assert(response is not None)
+        assert response is not None
         return response
 
-    def register_callback(self, id_or_event: Union[int, str],
-                          callback: QmpCallback) -> None:
+    def register_callback(
+        self, id_or_event: Union[int, str], callback: QmpCallback
+    ) -> None:
         if isinstance(id_or_event, int):
             self.id_callbacks[id_or_event].append(callback)
         elif isinstance(id_or_event, str):
             self.event_callbacks[id_or_event].append(callback)
         else:
-            raise RuntimeError(
-                f"Invalid argument to register_callback '{id_or_event}'")
+            raise RuntimeError(f"Invalid argument to register_callback '{id_or_event}'")
 
 
 class QemuOutputProxy:
@@ -144,21 +144,21 @@ class QemuOutputProxy:
 
     def __init__(self) -> None:
         self.quiet = False
-        self.buffer = b''
+        self.buffer = b""
         self.linux_has_started = False
 
     def silence(self) -> None:
         self.quiet = True
 
-    def start(self, proc_handle: 'subprocess.Popen[bytes]') -> None:
+    def start(self, proc_handle: "subprocess.Popen[bytes]") -> None:
         # Start and drop this reference. Because the thread is a daemon it will
         # be killed when python dies
         thread = threading.Thread(target=self.__start, args=(proc_handle,))
         thread.daemon = True
         thread.start()
 
-    def __start(self, proc_handle: 'subprocess.Popen[bytes]') -> None:
-        assert(proc_handle.stdout is not None)
+    def __start(self, proc_handle: "subprocess.Popen[bytes]") -> None:
+        assert proc_handle.stdout is not None
 
         # Set the socket to be non-blocking, as we don't want to read in chuncks
         stdout_handle = proc_handle.stdout
@@ -168,7 +168,7 @@ class QemuOutputProxy:
         # In order to avoid trashing the console with ANSI escape sequences
         # from grub/whatever is running before the kernel, we wait for output
         # that looks like a timestamp before we start actually proxying anything
-        timestamp_matcher = re.compile(br'\[[ \d]+\.\d+\]')
+        timestamp_matcher = re.compile(br"\[[ \d]+\.\d+\]")
 
         while True:
             ready, _, err = select.select([stdout_handle], [], [])
@@ -195,8 +195,8 @@ class QemuOutputProxy:
                     self.linux_has_started = True
 
                     # Strip everything in the buffer before the match
-                    raw_content = combined[position.span()[0]:]
-                    self.buffer = b''
+                    raw_content = combined[position.span()[0] :]
+                    self.buffer = b""
                 else:
                     self.buffer = combined
                     continue
@@ -221,11 +221,18 @@ class QemuRunner:
     # As far as I can tell, this _has_ to be quoted. Otherwise, it will
     # fail at runtime because I guess something is actually run here and
     # subprocess.Popen is not actually subscriptable.
-    proc_handle: 'Optional[subprocess.Popen[bytes]]'
+    proc_handle: "Optional[subprocess.Popen[bytes]]"
 
-    def __init__(self, args: List[str], *, bin_name: Optional[str] = None,
-                 qmp_port: Optional[int] = None, quiet: bool = False,
-                 silenceable: bool = False, qmp_connectable: bool = False) -> None:
+    def __init__(
+        self,
+        args: List[str],
+        *,
+        bin_name: Optional[str] = None,
+        qmp_port: Optional[int] = None,
+        quiet: bool = False,
+        silenceable: bool = False,
+        qmp_connectable: bool = False,
+    ) -> None:
         qmp_port = qmp_port or utils.allocate_random_port()
         self.bin_name = bin_name or self.__find_qemu_bin_name()
         self.quiet = quiet
@@ -245,10 +252,12 @@ class QemuRunner:
         return ["-qmp", f"tcp:127.0.0.1:{port},server,nowait"]
 
     def __find_qemu_bin_name(self) -> str:
-        return 'qemu-system-x86_64'
+        return "qemu-system-x86_64"
 
-    def start(self) -> 'subprocess.Popen[bytes]':
-        logging.info(f"Starting qemu process '{self.bin_name}' with arguments '{self.args}'")
+    def start(self) -> "subprocess.Popen[bytes]":
+        logging.info(
+            f"Starting qemu process '{self.bin_name}' with arguments '{self.args}'"
+        )
 
         # By default, perform no redirection
         stdin, stdout, stderr = None, None, None
@@ -263,10 +272,10 @@ class QemuRunner:
             stdin=stdin,
             stdout=stdout,
             stderr=stderr,
-
             # Automatically send SIGTERM to this process when the main Transient
             # process dies
-            preexec_fn=lambda: linux.set_death_signal(signal.SIGTERM))
+            preexec_fn=lambda: linux.set_death_signal(signal.SIGTERM),
+        )
 
         if self.proxy is not None:
             self.proxy.start(self.proc_handle)

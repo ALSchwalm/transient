@@ -33,9 +33,9 @@ class TransientProcessError(Exception):
 
 @enum.unique
 class TransientVmState(enum.Enum):
-    WAITING = 1,
-    RUNNING = 2,
-    FINISHED = 3,
+    WAITING = (1,)
+    RUNNING = (2,)
+    FINISHED = (3,)
 
 
 class TransientVm:
@@ -60,24 +60,30 @@ class TransientVm:
         return str(uuid.uuid4())
 
     def __create_images(self, names: List[str]) -> List[image.FrontendImageInfo]:
-        return [self.store.create_vm_image(image_name, self.name, idx)
-                for idx, image_name in enumerate(names)]
+        return [
+            self.store.create_vm_image(image_name, self.name, idx)
+            for idx, image_name in enumerate(names)
+        ]
 
     def __needs_ssh(self) -> bool:
-        return (self.config.ssh_console is True or
-                self.config.ssh_command is not None or
-                self.config.ssh_with_serial is True or
-                len(self.config.shared_folder) > 0)
+        return (
+            self.config.ssh_console is True
+            or self.config.ssh_command is not None
+            or self.config.ssh_with_serial is True
+            or len(self.config.shared_folder) > 0
+        )
 
     def __needs_ssh_console(self) -> bool:
-        return (self.config.ssh_console is True or
-                self.config.ssh_with_serial is True or
-                self.config.ssh_command is not None)
+        return (
+            self.config.ssh_console is True
+            or self.config.ssh_with_serial is True
+            or self.config.ssh_command is not None
+        )
 
     def __get_required_environment(self) -> Environ:
         """Configures the environment to remove the libvirt dependency from libguestfs-tools"""
         env = os.environ
-        env['LIBGUESTFS_BACKEND'] = 'direct'
+        env["LIBGUESTFS_BACKEND"] = "direct"
         return env
 
     def __needs_to_copy_in_files_before_running(self) -> bool:
@@ -95,21 +101,27 @@ class TransientVm:
     def __copy_in(self, path_mapping: str) -> None:
         """Copies the given file or directory (located on the host) into the VM"""
         try:
-            host_path, vm_absolute_directory = path_mapping.split(':')
+            host_path, vm_absolute_directory = path_mapping.split(":")
         except ValueError:
-            raise RuntimeError(f'Invalid file mapping: {path_mapping}.' +
-                               ' -copy-in-before must be (path/on/host:/absolute/path/on/guest)')
+            raise RuntimeError(
+                f"Invalid file mapping: {path_mapping}."
+                + " -copy-in-before must be (path/on/host:/absolute/path/on/guest)"
+            )
 
         if not os.path.exists(host_path):
-            raise RuntimeError(f'Host path does not exists: {host_path}')
+            raise RuntimeError(f"Host path does not exists: {host_path}")
 
-        if not vm_absolute_directory.startswith('/'):
-            raise RuntimeError(f'Absolute path for guest required: {vm_absolute_directory}')
+        if not vm_absolute_directory.startswith("/"):
+            raise RuntimeError(
+                f"Absolute path for guest required: {vm_absolute_directory}"
+            )
 
         environment = self.__get_required_environment()
         for vm_image in self.vm_images:
-            subprocess.run(['virt-copy-in', '-a', vm_image.path, host_path, vm_absolute_directory],
-                           env=environment)
+            subprocess.run(
+                ["virt-copy-in", "-a", vm_image.path, host_path, vm_absolute_directory],
+                env=environment,
+            )
 
     def __needs_to_copy_out_files_after_running(self) -> bool:
         """Checks if at least one directory on the VM needs to be copied out
@@ -126,21 +138,25 @@ class TransientVm:
     def __copy_out(self, path_mapping: str) -> None:
         """Copies the given file or directory (located on the guest) onto the host"""
         try:
-            vm_absolute_path, host_directory = path_mapping.split(':')
+            vm_absolute_path, host_directory = path_mapping.split(":")
         except ValueError:
-            raise RuntimeError(f'Invalid file mapping: {path_mapping}.' +
-                               ' -copy-out-after must be (/absolute/path/on/guest:path/on/host)')
+            raise RuntimeError(
+                f"Invalid file mapping: {path_mapping}."
+                + " -copy-out-after must be (/absolute/path/on/guest:path/on/host)"
+            )
 
         if not os.path.isdir(host_directory):
-            raise RuntimeError(f'Host directory does not exist: {host_directory}')
+            raise RuntimeError(f"Host directory does not exist: {host_directory}")
 
-        if not vm_absolute_path.startswith('/'):
-            raise RuntimeError(f'Absolute path for guest required: {vm_absolute_path}')
+        if not vm_absolute_path.startswith("/"):
+            raise RuntimeError(f"Absolute path for guest required: {vm_absolute_path}")
 
         environment = self.__get_required_environment()
         for vm_image in self.vm_images:
-            subprocess.run(['virt-copy-out', '-a', vm_image.path, vm_absolute_path, host_directory],
-                           env=environment)
+            subprocess.run(
+                ["virt-copy-out", "-a", vm_image.path, vm_absolute_path, host_directory,],
+                env=environment,
+            )
 
     def __qemu_added_args(self) -> List[str]:
         new_args = ["-name", self.name]
@@ -157,24 +173,28 @@ class TransientVm:
             else:
                 ssh_port = self.config.ssh_port
 
-            self.ssh_config = ssh.SshConfig(host="127.0.0.1",
-                                            port=ssh_port,
-                                            user=self.config.ssh_user,
-                                            ssh_bin_name=self.config.ssh_bin_name)
+            self.ssh_config = ssh.SshConfig(
+                host="127.0.0.1",
+                port=ssh_port,
+                user=self.config.ssh_user,
+                ssh_bin_name=self.config.ssh_bin_name,
+            )
 
             # the random localhost port or the user provided port to guest port 22
-            new_args.extend([
-                "-netdev",
-                f"user,id=transient-sshdev,hostfwd=tcp::{ssh_port}-:22",
-                "-device",
-                "e1000,netdev=transient-sshdev"
-            ])
+            new_args.extend(
+                [
+                    "-netdev",
+                    f"user,id=transient-sshdev,hostfwd=tcp::{ssh_port}-:22",
+                    "-device",
+                    "e1000,netdev=transient-sshdev",
+                ]
+            )
 
         return new_args
 
     def __connect_ssh(self) -> int:
-        assert(self.ssh_config is not None)
-        assert(self.qemu_runner is not None)
+        assert self.ssh_config is not None
+        assert self.qemu_runner is not None
 
         client = ssh.SshClient(config=self.ssh_config, command=self.config.ssh_command)
         conn = client.connect_stdout(timeout=self.config.ssh_timeout)
@@ -193,8 +213,8 @@ class TransientVm:
 
     def __qemu_sigchld_handler(self, sig: int, frame: Any) -> None:
         # We register this signal handler after the QEMU start, so these must not be None
-        assert(self.qemu_runner is not None)
-        assert(self.qemu_runner.proc_handle is not None)
+        assert self.qemu_runner is not None
+        assert self.qemu_runner.proc_handle is not None
 
         # Once we no longer have a QEMU processes (i.e., the VM is 'finished'), it
         # is an error to waitpid on the QEMU pid. However, we may still receive
@@ -217,7 +237,7 @@ class TransientVm:
             #
             # Therefore, we check if the least significant 7 bits are unset, and if
             # so, return the high byte. Otherwise, just return 1
-            signal_number = exit_indicator & 0x7f
+            signal_number = exit_indicator & 0x7F
             if signal_number != 0:
                 exit_status = 1
             else:
@@ -282,9 +302,12 @@ class TransientVm:
         # Note that we must _not_ use QMP if we aren't using the SSH connection, because
         # passing the `-qmp` arg causes QEMU to terminate on SIGINT, even when in
         # `-nographic` mode, which is very surprising.
-        self.qemu_runner = qemu.QemuRunner(full_qemu_args, quiet=qemu_quiet,
-                                           silenceable=qemu_silenceable,
-                                           qmp_connectable=self.__needs_ssh_console())
+        self.qemu_runner = qemu.QemuRunner(
+            full_qemu_args,
+            quiet=qemu_quiet,
+            silenceable=qemu_silenceable,
+            qmp_connectable=self.__needs_ssh_console(),
+        )
 
         qemu_proc = self.qemu_runner.start()
 
@@ -297,21 +320,23 @@ class TransientVm:
             return self.__post_run(qemu_returncode)
 
         for shared_spec in self.config.shared_folder:
-            assert(self.ssh_config is not None)
+            assert self.ssh_config is not None
             local, remote = shared_spec.split(":")
 
             # The user almost certainly doesn't intend to pass a relative path,
             # so make it absolute
             absolute_local_path = os.path.abspath(local)
-            sshfs.do_sshfs_mount(connect_timeout=self.config.ssh_timeout,
-                                 ssh_config=self.ssh_config,
-                                 local_dir=absolute_local_path,
-                                 remote_dir=remote,
-                                 local_user=self.__current_user())
+            sshfs.do_sshfs_mount(
+                connect_timeout=self.config.ssh_timeout,
+                ssh_config=self.ssh_config,
+                local_dir=absolute_local_path,
+                remote_dir=remote,
+                local_user=self.__current_user(),
+            )
 
         if self.__needs_ssh_console():
             # Now wait until the QMP connection is established (this should be very fast).
-            assert(self.qemu_runner.qmp_client is not None)
+            assert self.qemu_runner.qmp_client is not None
             self.qemu_runner.qmp_client.connect()
 
             # Note that we always return the SSH exit code, even if the guest failed to
@@ -326,11 +351,11 @@ class TransientVm:
 
             # If we get a guest SHUTDOWN signal, invoke a callback to log it
             self.qemu_runner.qmp_client.register_callback(
-                "SHUTDOWN", self.__qemu_guest_shutdown)
+                "SHUTDOWN", self.__qemu_guest_shutdown
+            )
 
             # Now actually request that the guest shutdown via ACPI
-            self.qemu_runner.qmp_client.send_sync(
-                {"execute": "system_powerdown"})
+            self.qemu_runner.qmp_client.send_sync({"execute": "system_powerdown"})
 
             try:
                 # Wait a bit for the guest to finish the shutdown and QEMU to exit
@@ -341,8 +366,10 @@ class TransientVm:
                 # shutdown, so don't show an error here.
                 if self.config.shutdown_timeout > 0:
                     logging.error(
-                        "Timeout expired while waiting for guest to shutdown (timeout={})"
-                        .format(self.config.shutdown_timeout))
+                        "Timeout expired while waiting for guest to shutdown (timeout={})".format(
+                            self.config.shutdown_timeout
+                        )
+                    )
 
                 # If we didn't reach the expected shutdown, this will terminte
                 # the VM. Otherwise, this does nothing.

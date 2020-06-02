@@ -40,15 +40,16 @@ def _prepare_file_operation_bar(filesize: int) -> progressbar.ProgressBar:
         maxval=filesize,
         widgets=[
             progressbar.Percentage(),
-            ' ',
+            " ",
             progressbar.Bar(),
-            ' ',
+            " ",
             progressbar.FileTransferSpeed(),
-            ' | ',
+            " | ",
             progressbar.DataSize(),
-            ' | ',
+            " | ",
             progressbar.ETA(),
-        ])
+        ],
+    )
 
 
 class BaseImageProtocol:
@@ -58,7 +59,9 @@ class BaseImageProtocol:
     def matches(self, candidate: str) -> bool:
         return self.regex.match(candidate) is not None
 
-    def retrieve_image(self, store: 'ImageStore', spec: 'ImageSpec', destination: str) -> None:
+    def retrieve_image(
+        self, store: "ImageStore", spec: "ImageSpec", destination: str
+    ) -> None:
         temp_destination = destination + ".part"
         fd = self.__lock_backend_destination(temp_destination)
 
@@ -70,19 +73,21 @@ class BaseImageProtocol:
             os.close(fd)
             return None
 
-        with os.fdopen(fd, 'wb+') as temp_file:
+        with os.fdopen(fd, "wb+") as temp_file:
             self._do_retrieve_image(store, spec, temp_file)
 
             # Now that the entire file is retrieved, atomically move it to the destination.
             # This avoids issues where a process was killed in the middle of retrieval
             os.rename(temp_destination, destination)
 
-    def _do_retrieve_image(self, store: 'ImageStore', spec: 'ImageSpec',
-                           destination: IO[bytes]) -> None:
+    def _do_retrieve_image(
+        self, store: "ImageStore", spec: "ImageSpec", destination: IO[bytes]
+    ) -> None:
         raise RuntimeError("Protocol did not implement '_do_retrieve_image'")
 
-    def _copy_with_progress(self, bar: progressbar.ProgressBar, source: IO[bytes],
-                            destination: IO[bytes]) -> None:
+    def _copy_with_progress(
+        self, bar: progressbar.ProgressBar, source: IO[bytes], destination: IO[bytes]
+    ) -> None:
         for idx in itertools.count():
             block = source.read(_BLOCK_TRANSFER_SIZE)
             if not block:
@@ -126,7 +131,8 @@ class VagrantImageProtocol(BaseImageProtocol):
             response.raise_for_status()
         except requests.exceptions.HTTPError:
             raise RuntimeError(
-                f"Unable to download vagrant image '{image_name}' info. Maybe invalid image?")
+                f"Unable to download vagrant image '{image_name}' info. Maybe invalid image?"
+            )
         return cast(Dict[str, Any], json.loads(response.content))
 
     def __vagrant_box_url(self, version: str, box_info: Dict[str, Any]) -> str:
@@ -139,13 +145,17 @@ class VagrantImageProtocol(BaseImageProtocol):
                     continue
 
                 download_url = provider["download_url"]
-                assert(isinstance(download_url, str))
+                assert isinstance(download_url, str)
                 return download_url
-        raise RuntimeError("No version '{}' available for {} with provider libvirt"
-                           .format(version, box_info["tag"]))
+        raise RuntimeError(
+            "No version '{}' available for {} with provider libvirt".format(
+                version, box_info["tag"]
+            )
+        )
 
-    def _do_retrieve_image(self, store: 'ImageStore', spec: 'ImageSpec',
-                           destination: IO[bytes]) -> None:
+    def _do_retrieve_image(
+        self, store: "ImageStore", spec: "ImageSpec", destination: IO[bytes]
+    ) -> None:
         box_name, version = spec.source.split(":", 1)
 
         # For convenience, allow the user to specify the version with a v,
@@ -186,10 +196,11 @@ class VagrantImageProtocol(BaseImageProtocol):
         # libvirt boxes _should_ just be tar.gz files with a box.img file, but some
         # images put these in subdirectories. Try to detect that.
         with tarfile.open(fileobj=box_file, mode="r") as tar:
-            image_info = [info for info in tar.getmembers()
-                          if info.name.endswith("box.img")][0]
+            image_info = [
+                info for info in tar.getmembers() if info.name.endswith("box.img")
+            ][0]
             in_stream = tar.extractfile(image_info.name)
-            assert(in_stream is not None)
+            assert in_stream is not None
 
             bar = _prepare_file_operation_bar(image_info.size)
             self._copy_with_progress(bar, in_stream, destination)
@@ -201,8 +212,9 @@ class FrontendImageProtocol(BaseImageProtocol):
     def __init__(self) -> None:
         super().__init__(re.compile(r"frontend", re.IGNORECASE))
 
-    def _do_retrieve_image(self, store: 'ImageStore', spec: 'ImageSpec',
-                           destination: IO[bytes]) -> None:
+    def _do_retrieve_image(
+        self, store: "ImageStore", spec: "ImageSpec", destination: IO[bytes]
+    ) -> None:
         vm_name, source = spec.source.split("@", 1)
 
         print(f"Copying image '{source}' for VM '{vm_name}' as new backend '{spec.name}'")
@@ -225,8 +237,9 @@ class HttpImageProtocol(BaseImageProtocol):
     def __init__(self) -> None:
         super().__init__(re.compile(r"http", re.IGNORECASE))
 
-    def _do_retrieve_image(self, store: 'ImageStore', spec: 'ImageSpec',
-                           destination: IO[bytes]) -> None:
+    def _do_retrieve_image(
+        self, store: "ImageStore", spec: "ImageSpec", destination: IO[bytes]
+    ) -> None:
 
         print(f"Downloading image from '{spec.source}'")
 
@@ -251,7 +264,7 @@ _IMAGE_SPEC = re.compile(r"^([^,]+?)(?:,(.+?)=(.+))?$")
 _IMAGE_PROTOCOLS = [
     VagrantImageProtocol(),
     FrontendImageProtocol(),
-    HttpImageProtocol()
+    HttpImageProtocol(),
 ]
 
 
@@ -280,7 +293,7 @@ class ImageSpec:
 
 
 class BaseImageInfo:
-    store: 'ImageStore'
+    store: "ImageStore"
     virtual_size: int
     actual_size: int
     filename: str
@@ -288,9 +301,10 @@ class BaseImageInfo:
     path: str
     image_info: Dict[str, Any]
 
-    def __init__(self, store: 'ImageStore', path: str) -> None:
-        stdout = subprocess.check_output([store.qemu_img_bin,
-                                          "info", "-U", "--output=json", path])
+    def __init__(self, store: "ImageStore", path: str) -> None:
+        stdout = subprocess.check_output(
+            [store.qemu_img_bin, "info", "-U", "--output=json", path]
+        )
         self.image_info = json.loads(stdout)
         self.store = store
         self.virtual_size = self.image_info["virtual-size"]
@@ -303,7 +317,7 @@ class BaseImageInfo:
 class BackendImageInfo(BaseImageInfo):
     identifier: str
 
-    def __init__(self, store: 'ImageStore', path: str) -> None:
+    def __init__(self, store: "ImageStore", path: str) -> None:
         super().__init__(store, path)
         self.identifier = _storage_safe_decode(self.filename)
 
@@ -313,7 +327,7 @@ class FrontendImageInfo(BaseImageInfo):
     disk_number: int
     backend: BackendImageInfo
 
-    def __init__(self, store: 'ImageStore', path: str):
+    def __init__(self, store: "ImageStore", path: str):
         super().__init__(store, path)
         vm_name, number, image = self.filename.split("-")
         self.vm_name = _storage_safe_decode(vm_name)
@@ -321,41 +335,62 @@ class FrontendImageInfo(BaseImageInfo):
         self.backend = BackendImageInfo(store, self.image_info["full-backing-filename"])
 
 
-def format_frontend_image_table(list: List[FrontendImageInfo]) -> beautifultable.BeautifulTable:
+def format_frontend_image_table(
+    list: List[FrontendImageInfo],
+) -> beautifultable.BeautifulTable:
     table = beautifultable.BeautifulTable()
-    table.column_headers = ["VM Name", "Backend Image", "Disk Num", "Real Size", "Virt Size"]
+    table.column_headers = [
+        "VM Name",
+        "Backend Image",
+        "Disk Num",
+        "Real Size",
+        "Virt Size",
+    ]
     table.set_style(beautifultable.BeautifulTable.STYLE_BOX)
-    table.column_alignments['VM Name'] = beautifultable.BeautifulTable.ALIGN_LEFT
-    table.column_alignments['Backend Image'] = beautifultable.BeautifulTable.ALIGN_LEFT
-    table.column_alignments['Disk Num'] = beautifultable.BeautifulTable.ALIGN_RIGHT
-    table.column_alignments['Real Size'] = beautifultable.BeautifulTable.ALIGN_RIGHT
-    table.column_alignments['Virt Size'] = beautifultable.BeautifulTable.ALIGN_RIGHT
+    table.column_alignments["VM Name"] = beautifultable.BeautifulTable.ALIGN_LEFT
+    table.column_alignments["Backend Image"] = beautifultable.BeautifulTable.ALIGN_LEFT
+    table.column_alignments["Disk Num"] = beautifultable.BeautifulTable.ALIGN_RIGHT
+    table.column_alignments["Real Size"] = beautifultable.BeautifulTable.ALIGN_RIGHT
+    table.column_alignments["Virt Size"] = beautifultable.BeautifulTable.ALIGN_RIGHT
     for image in list:
-        table.append_row([image.vm_name, image.backend.identifier,
-                          image.disk_number, utils.format_bytes(image.actual_size),
-                          utils.format_bytes(image.virtual_size)])
+        table.append_row(
+            [
+                image.vm_name,
+                image.backend.identifier,
+                image.disk_number,
+                utils.format_bytes(image.actual_size),
+                utils.format_bytes(image.virtual_size),
+            ]
+        )
     return table
 
 
-def format_backend_image_table(list: List[BackendImageInfo]) -> beautifultable.BeautifulTable:
+def format_backend_image_table(
+    list: List[BackendImageInfo],
+) -> beautifultable.BeautifulTable:
     table = beautifultable.BeautifulTable()
     table.column_headers = ["Image Name", "Real Size", "Virt Size"]
     table.set_style(beautifultable.BeautifulTable.STYLE_BOX)
-    table.column_alignments['Image Name'] = beautifultable.BeautifulTable.ALIGN_LEFT
-    table.column_alignments['Real Size'] = beautifultable.BeautifulTable.ALIGN_RIGHT
-    table.column_alignments['Virt Size'] = beautifultable.BeautifulTable.ALIGN_RIGHT
+    table.column_alignments["Image Name"] = beautifultable.BeautifulTable.ALIGN_LEFT
+    table.column_alignments["Real Size"] = beautifultable.BeautifulTable.ALIGN_RIGHT
+    table.column_alignments["Virt Size"] = beautifultable.BeautifulTable.ALIGN_RIGHT
     for image in list:
-        table.append_row([image.identifier, utils.format_bytes(image.actual_size),
-                          utils.format_bytes(image.virtual_size)])
+        table.append_row(
+            [
+                image.identifier,
+                utils.format_bytes(image.actual_size),
+                utils.format_bytes(image.virtual_size),
+            ]
+        )
     return table
 
 
-def format_image_table(list: List[BaseImageInfo]) -> Tuple[beautifultable.BeautifulTable,
-                                                           beautifultable.BeautifulTable]:
+def format_image_table(
+    list: List[BaseImageInfo],
+) -> Tuple[beautifultable.BeautifulTable, beautifultable.BeautifulTable]:
     frontend = [img for img in list if isinstance(img, FrontendImageInfo)]
     backend = [img for img in list if isinstance(img, BackendImageInfo)]
-    return (format_frontend_image_table(frontend),
-            format_backend_image_table(backend))
+    return (format_frontend_image_table(frontend), format_backend_image_table(backend))
 
 
 class ImageStore:
@@ -363,8 +398,9 @@ class ImageStore:
     frontend: str
     qemu_img_bin: str
 
-    def __init__(self, *, backend_dir: Optional[str] = None,
-                 frontend_dir: Optional[str] = None) -> None:
+    def __init__(
+        self, *, backend_dir: Optional[str] = None, frontend_dir: Optional[str] = None
+    ) -> None:
 
         self.backend = os.path.abspath(backend_dir or self.__default_backend_dir())
         self.frontend = os.path.abspath(frontend_dir or self.__default_frontend_dir())
@@ -420,30 +456,42 @@ class ImageStore:
         logging.info(f"Finished retrieving image: {spec.name}")
         return BackendImageInfo(self, destination)
 
-    def create_vm_image(self, image_spec: str, vm_name: str, num: int) -> FrontendImageInfo:
+    def create_vm_image(
+        self, image_spec: str, vm_name: str, num: int
+    ) -> FrontendImageInfo:
         backing_image = self.retrieve_image(image_spec, vm_name)
         safe_vmname = _storage_safe_encode(vm_name)
         safe_image_identifier = _storage_safe_encode(backing_image.identifier)
         new_image_path = os.path.join(
-            self.frontend, f"{safe_vmname}-{num}-{safe_image_identifier}")
+            self.frontend, f"{safe_vmname}-{num}-{safe_image_identifier}"
+        )
 
         if os.path.exists(new_image_path):
             logging.info(f"VM image '{new_image_path}' already exists. Skipping create.")
             return FrontendImageInfo(self, new_image_path)
 
         logging.info(
-            f"Creating VM Image '{new_image_path}' from backing image '{backing_image.path}'")
+            f"Creating VM Image '{new_image_path}' from backing image '{backing_image.path}'"
+        )
 
-        subprocess.check_output([self.qemu_img_bin,
-                                 "create", "-f", "qcow2",
-                                 "-o", f"backing_file={backing_image.path}",
-                                 new_image_path])
+        subprocess.check_output(
+            [
+                self.qemu_img_bin,
+                "create",
+                "-f",
+                "qcow2",
+                "-o",
+                f"backing_file={backing_image.path}",
+                new_image_path,
+            ]
+        )
 
         logging.info(f"VM Image '{new_image_path}' created")
         return FrontendImageInfo(self, new_image_path)
 
-    def frontend_image_list(self, vm_name: Optional[str] = None,
-                            image_identifier: Optional[str] = None) -> List[FrontendImageInfo]:
+    def frontend_image_list(
+        self, vm_name: Optional[str] = None, image_identifier: Optional[str] = None
+    ) -> List[FrontendImageInfo]:
         images = []
         for candidate in os.listdir(self.frontend):
             if not _VM_IMAGE_REGEX.match(candidate):
@@ -459,7 +507,9 @@ class ImageStore:
             images.append(image_info)
         return images
 
-    def backend_image_list(self, image_identifier: Optional[str] = None) -> List[BackendImageInfo]:
+    def backend_image_list(
+        self, image_identifier: Optional[str] = None
+    ) -> List[BackendImageInfo]:
         images = []
         for candidate in os.listdir(self.backend):
             if not _BACKEND_IMAGE_REGEX.match(candidate):

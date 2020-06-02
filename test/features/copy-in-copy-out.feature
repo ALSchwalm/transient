@@ -6,17 +6,8 @@ Feature: Copy-in and Copy-out Support
     - copy the host file or directory to the guest directory before starting the VM
     - copy the guest file or directory to the host directory after stopping the VM
 
- Scenario: Download a single image
-    Given a transient vm
-      And a name "test-vm"
-      And a disk image "generic/alpine38:v3.0.2"
-      And the vm is prepare-only
-     When the transient command is run
-     Then the return code is 0
-
   Scenario: Copy in directory before starting VM
     Given a transient vm
-      And a name "test-vm"
       And a disk image "generic/alpine38:v3.0.2"
       And a test file: "artifacts/copy-in-before-test-file"
       And a guest directory: "/home/vagrant/"
@@ -28,7 +19,6 @@ Feature: Copy-in and Copy-out Support
 
   Scenario: Copy out directory after stopping VM
     Given a transient vm
-      And a name "test-vm"
       And a disk image "generic/alpine38:v3.0.2"
       And a host directory: "artifacts/"
       And a guest test file: "/home/vagrant/copy-out-after-test-file"

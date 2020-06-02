@@ -10,12 +10,14 @@ _PRCTL_SYSCALL = 157
 def prctl(option: int, arg2: int = 0, arg3: int = 0, arg4: int = 0, arg5: int = 0) -> int:
     prctl = ctypes.CDLL(None).syscall  # type: ignore
     prctl.restype = ctypes.c_int
-    prctl.argtypes = (ctypes.c_long,  # The actual syscall number
-                      ctypes.c_int,
-                      ctypes.c_ulonglong,
-                      ctypes.c_ulonglong,
-                      ctypes.c_ulonglong,
-                      ctypes.c_ulonglong)
+    prctl.argtypes = (
+        ctypes.c_long,  # The actual syscall number
+        ctypes.c_int,
+        ctypes.c_ulonglong,
+        ctypes.c_ulonglong,
+        ctypes.c_ulonglong,
+        ctypes.c_ulonglong,
+    )
     return cast(int, prctl(_PRCTL_SYSCALL, option, arg2, arg3, arg4, arg5))
 
 
