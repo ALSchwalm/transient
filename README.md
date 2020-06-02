@@ -61,3 +61,13 @@ transient run \
 
 The `-ssh-console` flag depends on the image having the normal vagrant keypair
 trusted for the `vagrant` user.
+
+Using `-copy-in-before` and `-copy-out-after`
+---------------------------------------------
+
+Ubuntu does not support these flags by default because the kernel is not readable by non-root users.
+To use these flags on Ubuntu, allow non-root users to read the kernel by executing:
+
+```
+sudo chmod +r /boot/vmlinuz-*
+```

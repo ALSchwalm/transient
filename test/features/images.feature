@@ -15,7 +15,7 @@ Feature: Image Support
     Given a transient vm
       And a name "test-vm"
       And a disk image "generic/alpine38:v3.0.2"
-      And a frontend "./test-frontend"
+      And a frontend "./artifacts/test-frontend"
       And the vm is prepare-only
      When the transient command is run
      Then the return code is 0
@@ -25,7 +25,7 @@ Feature: Image Support
     Given a transient vm
       And a name "test-vm"
       And a disk image "generic/alpine38:v3.0.2"
-      And a backend "./test-backend"
+      And a backend "./artifacts/test-backend"
       And the vm is prepare-only
      When the transient command is run
      Then the return code is 0
@@ -34,7 +34,7 @@ Feature: Image Support
  Scenario: Delete a frontend image
     Given a transient delete command
       And a name "test-vm"
-      And a frontend "./test-frontend"
+      And a frontend "./artifacts/test-frontend"
      When the transient command is run
      Then the return code is 0
       And the file "test%2Dvm-0-generic%2Falpine38%3Av3.0.2" is not in the frontend
@@ -42,7 +42,7 @@ Feature: Image Support
  Scenario: Delete a backend image
     Given a transient delete command
       And a disk image "generic/alpine38:v3.0.2"
-      And a backend "./test-backend"
+      And a backend "./artifacts/test-backend"
      When the transient command is run
      Then the return code is 0
       And the file "generic%2Falpine38%3Av3.0.2" is not in the backend
@@ -50,6 +50,6 @@ Feature: Image Support
  Scenario: Delete a nonexistent file
     Given a transient delete command
       And a disk image "backend-does-not-exist"
-      And a backend "./test-backend"
+      And a backend "./artifacts/test-backend"
      When the transient command is run
      Then the return code is 1

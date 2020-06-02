@@ -40,7 +40,7 @@ jobs:
         python3 -m pip install -e '.[dev]'
     - name: Run tests
       run: |
-        make test-ci
+        make test-docker-ci
 
   Test-Multi-Python:
     runs-on: ubuntu-18.04
@@ -52,7 +52,7 @@ jobs:
     - name: Install package dependencies
       run: |
         sudo apt-get update
-        sudo apt-get install ssh qemu
+        sudo apt-get install ssh qemu libguestfs-tools
     - name: Set up Python ${{ matrix.python-version }}
       uses: actions/setup-python@v2
       with:
@@ -63,4 +63,5 @@ jobs:
         python -m pip install -e '.[dev]'
     - name: Run tests
       run: |
+        sudo chmod +r /boot/vmlinuz-*
         make test-ci

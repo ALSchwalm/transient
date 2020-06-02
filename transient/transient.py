@@ -12,7 +12,15 @@ import signal
 import subprocess
 import sys
 
-from typing import cast, Optional, List, Dict, Any, Union
+from typing import cast, Optional, List, Dict, Any, Union, TYPE_CHECKING
+
+# _Environ is declared as generic in stubs but not at runtime. This makes it
+# non-subscriptable and will result in a runtime error. According to the
+# MyPy documentation, we can bypass this: https://tinyurl.com/snqhqbr
+if TYPE_CHECKING:
+    Environ = os._Environ[str]
+else:
+    Environ = os._Environ
 
 
 class TransientVm:
@@ -45,6 +53,74 @@ class TransientVm:
         return (self.config.ssh_console is True or
                 self.config.ssh_with_serial is True or
                 self.config.ssh_command is not None)
+
+    def __get_required_environment(self) -> Environ:
+        """Configures the environment to remove the libvirt dependency from libguestfs-tools"""
+        env = os.environ
+        env['LIBGUESTFS_BACKEND'] = 'direct'
+        return env
+
+    def __needs_to_copy_in_files_before_running(self) -> bool:
+        """Checks if at least one file or directory on the host needs to be copied into the VM
+           before starting the VM
+        """
+        return self.config.copy_in_before is not None
+
+    def __copy_in_files(self) -> None:
+        """Copies the given files or directories (located on the host) into the VM"""
+        path_mappings = self.config.copy_in_before
+        for path_mapping in path_mappings:
+            self.__copy_in(path_mapping)
+
+    def __copy_in(self, path_mapping: str) -> None:
+        """Copies the given file or directory (located on the host) into the VM"""
+        try:
+            host_path, vm_absolute_directory = path_mapping.split(':')
+        except ValueError:
+            raise RuntimeError(f'Invalid file mapping: {path_mapping}.' +
+                               ' -copy-in-before must be (path/on/host:/absolute/path/on/guest)')
+
+        if not os.path.exists(host_path):
+            raise RuntimeError(f'Host path does not exists: {host_path}')
+
+        if not vm_absolute_directory.startswith('/'):
+            raise RuntimeError(f'Absolute path for guest required: {vm_absolute_directory}')
+
+        environment = self.__get_required_environment()
+        for vm_image in self.vm_images:
+            subprocess.run(['virt-copy-in', '-a', vm_image.path, host_path, vm_absolute_directory],
+                           env=environment)
+
+    def __needs_to_copy_out_files_after_running(self) -> bool:
+        """Checks if at least one directory on the VM needs to be copied out
+           to the host after stopping the VM
+        """
+        return self.config.copy_out_after is not None
+
+    def __copy_out_files(self) -> None:
+        """Copies the given files or directories (located on the guest) onto the host"""
+        path_mappings = self.config.copy_out_after
+        for path_mapping in path_mappings:
+            self.__copy_out(path_mapping)
+
+    def __copy_out(self, path_mapping: str) -> None:
+        """Copies the given file or directory (located on the guest) onto the host"""
+        try:
+            vm_absolute_path, host_directory = path_mapping.split(':')
+        except ValueError:
+            raise RuntimeError(f'Invalid file mapping: {path_mapping}.' +
+                               ' -copy-out-after must be (/absolute/path/on/guest:path/on/host)')
+
+        if not os.path.isdir(host_directory):
+            raise RuntimeError(f'Host directory does not exist: {host_directory}')
+
+        if not vm_absolute_path.startswith('/'):
+            raise RuntimeError(f'Absolute path for guest required: {vm_absolute_path}')
+
+        environment = self.__get_required_environment()
+        for vm_image in self.vm_images:
+            subprocess.run(['virt-copy-out', '-a', vm_image.path, vm_absolute_path, host_directory],
+                           env=environment)
 
     def __qemu_added_devices(self) -> List[str]:
         new_args = []
@@ -130,6 +206,9 @@ class TransientVm:
         # First, download and setup any required disks
         self.vm_images = self.__create_images(self.config.image)
 
+        if self.__needs_to_copy_in_files_before_running():
+            self.__copy_in_files()
+
         if self.config.prepare_only is True:
             return 0
 
@@ -181,6 +260,9 @@ class TransientVm:
             assert(self.qemu_runner.qmp_client is not None)
             self.qemu_runner.qmp_client.connect()
 
+            # Note that we always return the SSH exit code, even if the guest failed to
+            # shut down. This ensures the shutdown_timeout=0 case is handled as expected.
+            # (i.e., it returns the SSH code instead of a QEMU error)
             returncode = self.__connect_ssh()
 
             # In theory, we could get SIGCHLD from the QEMU process before getting or
@@ -200,8 +282,6 @@ class TransientVm:
                 # Wait a bit for the guest to finish the shutdown and QEMU to exit
                 self.qemu_runner.wait(timeout=self.config.shutdown_timeout)
 
-                # If QEMU terminates (as expected), retun the SSH exit code
-                return returncode
             except subprocess.TimeoutExpired:
                 # if the timeout == 0, then the user expects the guest to not actually
                 # shutdown, so don't show an error here.
@@ -210,13 +290,14 @@ class TransientVm:
                         "Timeout expired while waiting for guest to shutdown (timeout={})"
                         .format(self.config.shutdown_timeout))
 
-            # If we didn't reach the expected shutdown, this will terminte
-            # the VM. Otherwise, this does nothing.
-            self.qemu_runner.terminate()
+                # If we didn't reach the expected shutdown, this will terminte
+                # the VM. Otherwise, this does nothing.
+                self.qemu_runner.terminate()
 
-            # Note that we always return the SSH exit code, even if the guest failed to
-            # shut down. This ensures the shutdown_timeout=0 case is handled as expected.
-            # (i.e., it returns the SSH code instead of a QEMU error)
-            return returncode
         else:
-            return self.qemu_runner.wait()
+            returncode = self.qemu_runner.wait()
+
+        if self.__needs_to_copy_out_files_after_running():
+            self.__copy_out_files()
+
+        return returncode

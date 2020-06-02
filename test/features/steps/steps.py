@@ -1,4 +1,5 @@
 import os
+
 import subprocess
 from behave import *
 from hamcrest import *
@@ -89,6 +90,37 @@ def step_impl(context, mount):
 def step_impl(context, flag):
     context.vm_config["transient-args"].append(flag)
 
+@given('a guest test file: "{}"')
+@given('a guest directory: "{}"')
+def step_impl(context, guest_path):
+    context.vm_config["guest-path"] = guest_path
+
+@given('a test file: "{}/{}"')
+def step_impl(context, host_directory, test_file_name):
+    os.makedirs(host_directory, exist_ok=True)
+    test_file_path = os.path.join(host_directory, test_file_name)
+    open(test_file_path, 'w').close()
+    context.vm_config["test-file"] = test_file_path
+
+@given('a host directory: "{}"')
+def step_impl(context, host_directory):
+    context.vm_config["host-directory"] = host_directory
+    os.makedirs(host_directory, exist_ok=True)
+
+@given('the test file is copied to the guest directory before starting')
+def step_impl(context):
+    directory_mapping = '{}:{}'.format(
+            context.vm_config['test-file'],
+            context.vm_config['guest-path'])
+    context.vm_config["transient-args"].extend(["-copy-in-before", directory_mapping])
+
+@given('the guest test file is copied to the host directory after stopping')
+def step_impl(context):
+    directory_mapping = '{}:{}'.format(
+            context.vm_config['guest-path'],
+            context.vm_config['host-directory'])
+    context.vm_config["transient-args"].extend(["-copy-out-after", directory_mapping])
+
 @when('the vm runs to completion')
 @when('the transient command is run')
 def step_impl(context):
@@ -145,3 +177,7 @@ def step_impl(context, name):
 def step_impl(context, name):
     items = os.listdir(context.vm_config["image-frontend"])
     assert_that(items, not_(has_item(name)))
+
+@then('the file "{file_path}" exists')
+def step_impl(context, file_path):
+    assert os.path.exists(file_path)
