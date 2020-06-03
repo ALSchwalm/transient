@@ -341,8 +341,7 @@ class TransientVm:
         # so remove the frontend images
         if self.config.name is None:
             logging.info("Cleaning up temporary vm images")
-            tmp_images = self.store.frontend_image_list(vm_name=self.name)
-            for image in tmp_images:
+            for image in self.vm_images:
                 self.store.delete_image(image)
 
         if returncode != 0:
