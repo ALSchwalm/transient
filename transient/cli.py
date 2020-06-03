@@ -39,27 +39,16 @@ def with_common_options(func: Callable[..., Any]) -> Callable[..., Any]:
     return func
 
 
-def _make_option_parser(
-    cmd: click.Command, ctx: click.Context
-) -> click.parser.OptionParser:
-    # Override the normal Command parser to use the Transient one
-    parser = TransientOptionParser(ctx)
-    for param in cmd.get_params(ctx):
-        param.add_to_parser(parser, ctx)
-    return parser
-
-
-class TransientGroup(click.Group):
-    def make_parser(self, ctx: click.Context) -> click.parser.OptionParser:
-        return _make_option_parser(self, ctx)
-
-
 class TransientRunCommand(click.Command):
     def format_usage(self, ctx: click.Context, formatter: click.HelpFormatter) -> None:
         formatter.write_usage(ctx.command_path, "[OPTIONS] -- [QEMU_ARGS]...")
 
+    # Override the normal Command parser to use the Transient one
     def make_parser(self, ctx: click.Context) -> click.parser.OptionParser:
-        return _make_option_parser(self, ctx)
+        parser = TransientOptionParser(ctx)
+        for param in self.get_params(ctx):
+            param.add_to_parser(parser, ctx)
+        return parser
 
 
 class TransientOptionParser(click.parser.OptionParser):
@@ -94,7 +83,7 @@ class TransientOptionParser(click.parser.OptionParser):
         self._match_long_opt(norm_long_opt, explicit_value, state)  # type: ignore
 
 
-@click.group(cls=TransientGroup)
+@click.group()
 @click.help_option("-h", "--help")
 @click.option("-v", "--verbose", count=True)
 @click.option(
