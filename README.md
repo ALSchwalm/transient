@@ -18,6 +18,11 @@ source, clone this repository and run `pip install -e '.[dev]'` from the project
 root. As always, the usage of python [virtual environments](https://docs.python.org/3/tutorial/venv.html)
 is recommended for a development setup.
 
+`transient` has dependencies on a number of packages. On ubuntu, these can be installed
+by running `apt-get install ssh qemu-system-x86 python3-pip libguestfs-tools`. Note that
+`libguestfs-tools` is only required when using the `-copy-in-before` and `-copy-out-after`
+flags.
+
 Documentation
 -------------
 
@@ -60,13 +65,3 @@ transient run \
 
 The `-ssh-console` flag depends on the image having the normal vagrant keypair
 trusted for the `vagrant` user.
-
-Using `-copy-in-before` and `-copy-out-after`
----------------------------------------------
-
-Ubuntu does not support these flags by default because the kernel is not readable by non-root users.
-To use these flags on Ubuntu, allow non-root users to read the kernel by executing:
-
-```
-sudo chmod +r /boot/vmlinuz-*
-```

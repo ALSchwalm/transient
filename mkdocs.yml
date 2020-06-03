@@ -10,3 +10,4 @@ nav:
       - 'Delete': cli/delete.md
     - Feature Details:
       - 'Using Shared Folders': details/shared-folders.md
+      - 'Usage with Docker': details/docker.md

@@ -8,4 +8,7 @@ minimum versions of QEMU and python:
 - QEMU 2.11
 
 Other versions may work, but are not tested. The standard test platform for
-`transient` is Ubuntu 18.04.
+`transient` is Ubuntu 18.04. On ubuntu, the following packages provide compatible
+versions of the `transient` dependencies:
+
+`apt-get install ssh qemu-system-x86 python3-pip libguestfs-tools`

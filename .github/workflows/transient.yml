@@ -33,7 +33,7 @@ jobs:
     - name: Install package dependencies
       run: |
         apt-get -y update
-        apt-get -y install ssh qemu qemu-utils qemu-system-x86 python3-pip libguestfs-tools
+        apt-get -y install ssh qemu-system-x86 python3-pip libguestfs-tools
     - name: Install python dependencies
       run: |
         python3 -m pip install --upgrade pip

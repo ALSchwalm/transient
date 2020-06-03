@@ -83,6 +83,12 @@ Shared Folders](/examples/shared-folders/).
 - `-prepare-only`: `transient` will exit after performing the disk download/creation
 steps outlined above. It will not start the guest virtual machine.
 
+- `-copy-in-before`: Copy the contents of a host directory to a location on the guest
+before booting the VM. For example `-copy-in-before path/on/host:/path/on/guest`
+
+- `-copy-out-after`: Copy the contents of a guest directory to a location on the hose
+after shutting down the VM. For example `-copy-out-after path/on/host:/path/on/guest`
+
 #### Examples
 
 ##### Run a CentOS 7 VM with Serial Console
