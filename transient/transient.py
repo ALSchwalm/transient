@@ -3,9 +3,11 @@ from . import image
 from . import utils
 from . import ssh
 from . import sshfs
+from . import static
 
 import argparse
 import enum
+import glob
 import logging
 import os
 import pwd
@@ -13,7 +15,7 @@ import signal
 import subprocess
 import uuid
 
-from typing import cast, Optional, List, Dict, Any, Union, TYPE_CHECKING
+from typing import cast, Optional, List, Dict, Any, Union, Tuple, TYPE_CHECKING
 
 # _Environ is declared as generic in stubs but not at runtime. This makes it
 # non-subscriptable and will result in a runtime error. According to the
@@ -22,6 +24,9 @@ if TYPE_CHECKING:
     Environ = os._Environ[str]
 else:
     Environ = os._Environ
+
+# Maximum time to run virt-copy-in/out before failing
+_MAX_COPY_TIME = 500
 
 
 class TransientProcessError(Exception):
@@ -80,11 +85,78 @@ class TransientVm:
             or self.config.ssh_command is not None
         )
 
-    def __get_required_environment(self) -> Environ:
-        """Configures the environment to remove the libvirt dependency from libguestfs-tools"""
+    def __has_readable_kernel(self) -> bool:
+        kernels = glob.glob("/boot/vmlinuz-*")
+        if len(kernels) == 0:
+            logging.debug(f"No kernels found")
+            return False
+        for kernel in kernels:
+            if os.access(kernel, os.R_OK) is True:
+                logging.debug(f"Found readable kernel at {kernel}")
+                return True
+        logging.debug(f"No readable kernels found")
+        return False
+
+    def __extract_libguestfs_kernel(self) -> Tuple[str, str]:
+        """Extract the transient kernel and modules"""
+        home = utils.transient_data_home()
+        kernel_destination = os.path.join(home, "transient-kernel")
+        modules_destination = os.path.join(home, "transient-modules")
+        modules_dep = os.path.join(modules_destination, "modules.dep")
+        if os.path.exists(kernel_destination) and os.path.exists(modules_dep):
+            logging.debug(f"Transient kernel and modules already extracted. Skipping")
+            return kernel_destination, modules_destination
+
+        logging.info(f"Extracting transient kernel to {kernel_destination}")
+        utils.extract_static_file("transient-kernel", kernel_destination)
+
+        logging.info(f"Extracting transient modules to {modules_destination}")
+        # Our kernel doesn't actually use modules, but libguestfs expects _some_
+        # sort of modules directory, so just make an empty one
+        os.makedirs(modules_destination)
+        with open(modules_dep, "wb+") as f:
+            pass
+        return kernel_destination, modules_destination
+
+    def __prepare_libguestfs_environment(self) -> Environ:
+        """Configures an environment for running libguestfs commands"""
         env = os.environ
+
+        # On platforms that don't have an available kernel or the kernel is
+        # not readable (e.g., docker and ubuntu), use ours.
+        if not self.__has_readable_kernel():
+            logging.info(f"No readable kernel detected. Extracting transient kernel")
+            kernel, modules = self.__extract_libguestfs_kernel()
+            env["SUPERMIN_MODULES"] = modules
+            env["SUPERMIN_KERNEL"] = kernel
+
+        # Avoid using libvirt explicitly
         env["LIBGUESTFS_BACKEND"] = "direct"
+
+        # And do verbose logging so we can debug failures
+        env["LIBGUESTFS_TRACE"] = "1"
+        env["LIBGUESTFS_DEBUG"] = "1"
         return env
+
+    def __do_copy_command(self, cmd: List[str], environment: Environ) -> None:
+        cmd_name = cmd[0]
+        try:
+            handle = subprocess.Popen(
+                cmd,
+                env=environment,
+                stdin=subprocess.DEVNULL,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+            )
+            _, raw_stderr = handle.communicate(timeout=_MAX_COPY_TIME)
+            if handle.poll() == 0:
+                return
+        except subprocess.TimeoutExpired:
+            handle.terminate()
+            _, raw_stderr = handle.communicate()
+            logging.error(f"{cmd_name} timed out after {_MAX_COPY_TIME} seconds")
+        stderr = raw_stderr.decode("utf-8").strip()
+        raise RuntimeError(f"{cmd_name} failed: {stderr}")
 
     def __needs_to_copy_in_files_before_running(self) -> bool:
         """Checks if at least one file or directory on the host needs to be copied into the VM
@@ -101,7 +173,7 @@ class TransientVm:
     def __copy_in(self, path_mapping: str) -> None:
         """Copies the given file or directory (located on the host) into the VM"""
         try:
-            host_path, vm_absolute_directory = path_mapping.split(":")
+            host_path, vm_absolute_path = path_mapping.split(":")
         except ValueError:
             raise RuntimeError(
                 f"Invalid file mapping: {path_mapping}."
@@ -111,16 +183,17 @@ class TransientVm:
         if not os.path.exists(host_path):
             raise RuntimeError(f"Host path does not exists: {host_path}")
 
-        if not vm_absolute_directory.startswith("/"):
-            raise RuntimeError(
-                f"Absolute path for guest required: {vm_absolute_directory}"
-            )
+        if not vm_absolute_path.startswith("/"):
+            raise RuntimeError(f"Absolute path for guest required: {vm_absolute_path}")
 
-        environment = self.__get_required_environment()
+        environment = self.__prepare_libguestfs_environment()
         for vm_image in self.vm_images:
-            subprocess.run(
-                ["virt-copy-in", "-a", vm_image.path, host_path, vm_absolute_directory],
-                env=environment,
+            logging.info(
+                f"Copying from '{host_path}' to '{vm_image.backend.identifier}:{vm_absolute_path}'"
+            )
+            self.__do_copy_command(
+                ["virt-copy-in", "-a", vm_image.path, host_path, vm_absolute_path],
+                environment,
             )
 
     def __needs_to_copy_out_files_after_running(self) -> bool:
@@ -138,24 +211,27 @@ class TransientVm:
     def __copy_out(self, path_mapping: str) -> None:
         """Copies the given file or directory (located on the guest) onto the host"""
         try:
-            vm_absolute_path, host_directory = path_mapping.split(":")
+            vm_absolute_path, host_path = path_mapping.split(":")
         except ValueError:
             raise RuntimeError(
                 f"Invalid file mapping: {path_mapping}."
                 + " -copy-out-after must be (/absolute/path/on/guest:path/on/host)"
             )
 
-        if not os.path.isdir(host_directory):
-            raise RuntimeError(f"Host directory does not exist: {host_directory}")
+        if not os.path.isdir(host_path):
+            raise RuntimeError(f"Host path does not exist: {host_path}")
 
         if not vm_absolute_path.startswith("/"):
             raise RuntimeError(f"Absolute path for guest required: {vm_absolute_path}")
 
-        environment = self.__get_required_environment()
+        environment = self.__prepare_libguestfs_environment()
         for vm_image in self.vm_images:
-            subprocess.run(
-                ["virt-copy-out", "-a", vm_image.path, vm_absolute_path, host_directory,],
-                env=environment,
+            logging.info(
+                f"Copying from '{vm_image.backend.identifier}:{vm_absolute_path}' to '{host_path}'"
+            )
+            self.__do_copy_command(
+                ["virt-copy-out", "-a", vm_image.path, vm_absolute_path, host_path,],
+                environment,
             )
 
     def __qemu_added_args(self) -> List[str]:

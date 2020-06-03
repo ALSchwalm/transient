@@ -2,8 +2,20 @@ import distutils.util
 import logging
 import os
 import socket
+import tempfile
+
+try:
+    import importlib.resources as pkg_resources
+
+    package_read_bytes = pkg_resources.read_binary
+except ImportError:
+    # Try backported to PY<37 `importlib_resources`.
+    import importlib_resources as pkg_resources  # type: ignore
+
+    package_read_bytes = pkg_resources.read_binary
 
 from typing import cast, Optional
+from . import static
 
 
 def prompt_yes_no(prompt: str, default: Optional[bool] = None) -> bool:
@@ -67,3 +79,15 @@ def xdg_data_home() -> str:
 
 def transient_data_home() -> str:
     return os.path.join(xdg_data_home(), "transient")
+
+
+def extract_static_file(key: str, destination: str) -> None:
+    static_file = package_read_bytes(static, key)
+
+    # Set delete=False because we will be moving the file
+    with tempfile.NamedTemporaryFile(dir=os.path.dirname(destination), delete=False) as f:
+        f.write(static_file)
+
+        # The rename is done atomically, so even if we race with another
+        # processes, SSH will definitely get the full file contents
+        os.rename(f.name, destination)

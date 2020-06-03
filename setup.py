@@ -48,7 +48,7 @@ setup(
         ]
     },
     package_data = {
-        'transient': ['vagrant_keys/*'],
+        'transient': ['static/*'],
     },
     keywords=['qemu']
 )

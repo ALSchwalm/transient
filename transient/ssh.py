@@ -4,23 +4,12 @@ import os
 import signal
 import subprocess
 import time
-import tempfile
 
 from typing import Optional, List, IO, Any, Union, Dict
 
-try:
-    import importlib.resources as pkg_resources
-
-    _package_read_text = pkg_resources.read_text
-except ImportError:
-    # Try backported to PY<37 `importlib_resources`.
-    import importlib_resources as pkg_resources  # type: ignore
-
-    _package_read_text = pkg_resources.read_text
-
 from . import linux
 from . import utils
-from . import vagrant_keys
+from . import static
 
 SSH_CONNECTION_WAIT_TIME = 30
 SSH_CONNECTION_TIME_BETWEEN_TRIES = 2
@@ -96,15 +85,7 @@ class SshClient:
         if os.path.exists(key_destination):
             return [key_destination]
 
-        vagrant_priv = _package_read_text(vagrant_keys, "vagrant")
-
-        # Set delete=False because we will be moving the file
-        with tempfile.NamedTemporaryFile(dir=home, delete=False) as f:
-            f.write(vagrant_priv.encode("utf-8"))
-
-            # The rename is done atomically, so even if we race with another
-            # processes, SSH will definitely get the full file contents
-            os.rename(f.name, key_destination)
+        utils.extract_static_file("vagrant.priv", key_destination)
         return [key_destination]
 
     def __prepare_ssh_command(self, user_cmd: Optional[str] = None) -> List[str]:

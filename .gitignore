@@ -2,10 +2,11 @@
 venv/
 transient/__pycache__/
 images/
-transient/vagrant_keys/__pycache__/
+transient/static/__pycache__/
 transient.egg-info/
 build/
 dist/
+transient-kernel/
 
 # artifacts produced from testing
 artifacts

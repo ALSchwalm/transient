@@ -1,4 +1,5 @@
-
+TRANSIENT_KERNEL=transient/static/transient-kernel
+TRANSIENT_KCONFIG=config/transient-kernel-config
 MAX_LINE_LENGTH?=100
 
 .PHONY: check
@@ -35,6 +36,15 @@ test:
 
 test-%:
 	make -C test $*
+
+$(TRANSIENT_KERNEL): $(TRANSIENT_KCONFIG)
+	git clone --depth 1 --branch v5.7 https://git.kernel.org/pub/scm/linux/kernel/git/torvalds/linux.git transient-kernel
+	cp $(TRANSIENT_KCONFIG) transient-kernel/.config
+	make -C transient-kernel bzImage
+	cp transient-kernel/arch/x86/boot/bzImage $(TRANSIENT_KERNEL)
+
+.PHONY: kernel
+kernel: transient/static/transient-kernel
 
 .PHONY: docs
 docs:
