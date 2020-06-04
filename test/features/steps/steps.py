@@ -16,7 +16,12 @@ else:
 
 def build_command(context):
     config = context.vm_config
-    command = ["transient", config["command"], *config["transient-args"]]
+    command = [
+        "transient",
+        *config["transient-early-args"],
+        config["command"],
+        *config["transient-args"],
+    ]
     command.extend(["--", *config["qemu-args"]])
     return command
 
@@ -40,6 +45,7 @@ def wait_on_vm(context, timeout=VM_WAIT_TIME):
 def step_impl(context):
     context.vm_config = {
         "command": "run",
+        "transient-early-args": [],
         "transient-args": list(DEFAULT_TRANSIENT_ARGS),
         "qemu-args": list(DEFAULT_QEMU_ARGS),
     }
@@ -49,6 +55,7 @@ def step_impl(context):
 def step_impl(context):
     context.vm_config = {
         "command": "delete",
+        "transient-early-args": [],
         "transient-args": ["-force"],
         "qemu-args": [],
     }
@@ -105,6 +112,11 @@ def step_impl(context, mount):
 @given('a transient flag "{flag}"')
 def step_impl(context, flag):
     context.vm_config["transient-args"].append(flag)
+
+
+@given('a transient early flag "{flag}"')
+def step_impl(context, flag):
+    context.vm_config["transient-early-args"].append(flag)
 
 
 @given('a guest test file: "{}"')
