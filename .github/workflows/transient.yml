@@ -41,7 +41,7 @@ jobs:
     - name: Run tests
       run: |
         mkdir /lib/modules/
-        make test-ci
+        make test-docker-ci
 
   Test-Multi-Python:
     runs-on: ubuntu-18.04

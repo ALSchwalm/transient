@@ -1,4 +1,3 @@
-@skip-in-docker-ci
 Feature: Copy-in and Copy-out Support
     In order to facilitate easier file transfer between the host and guest,
     transient supports copy-in and copy-out support. Given a path on the host and an
