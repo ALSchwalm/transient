@@ -188,6 +188,7 @@ class TransientVm:
 
         environment = self.__prepare_libguestfs_environment()
         for vm_image in self.vm_images:
+            assert vm_image.backend is not None
             logging.info(
                 f"Copying from '{host_path}' to '{vm_image.backend.identifier}:{vm_absolute_path}'"
             )
@@ -226,6 +227,7 @@ class TransientVm:
 
         environment = self.__prepare_libguestfs_environment()
         for vm_image in self.vm_images:
+            assert vm_image.backend is not None
             logging.info(
                 f"Copying from '{vm_image.backend.identifier}:{vm_absolute_path}' to '{host_path}'"
             )

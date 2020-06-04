@@ -325,14 +325,23 @@ class BackendImageInfo(BaseImageInfo):
 class FrontendImageInfo(BaseImageInfo):
     vm_name: str
     disk_number: int
-    backend: BackendImageInfo
+    backend: Optional[BackendImageInfo]
 
     def __init__(self, store: "ImageStore", path: str):
         super().__init__(store, path)
         vm_name, number, image = self.filename.split("-")
         self.vm_name = _storage_safe_decode(vm_name)
         self.disk_number = int(number)
-        self.backend = BackendImageInfo(store, self.image_info["full-backing-filename"])
+        backend_path = self.image_info["full-backing-filename"]
+        try:
+            self.backend = BackendImageInfo(store, backend_path)
+        except subprocess.CalledProcessError:
+            # If the path doesn't exist, it was either deleted before
+            # we could run qemu-img, or it never existed at all
+            if not os.path.exists(backend_path):
+                self.backend = None
+            else:
+                raise
 
 
 def format_frontend_image_table(
@@ -353,10 +362,14 @@ def format_frontend_image_table(
     table.column_alignments["Real Size"] = beautifultable.BeautifulTable.ALIGN_RIGHT
     table.column_alignments["Virt Size"] = beautifultable.BeautifulTable.ALIGN_RIGHT
     for image in list:
+        if image.backend is None:
+            backend_identifier = "--NOT FOUND--"
+        else:
+            backend_identifier = image.backend.identifier
         table.append_row(
             [
                 image.vm_name,
-                image.backend.identifier,
+                backend_identifier,
                 image.disk_number,
                 utils.format_bytes(image.actual_size),
                 utils.format_bytes(image.virtual_size),
@@ -497,12 +510,23 @@ class ImageStore:
             if not _VM_IMAGE_REGEX.match(candidate):
                 continue
             path = os.path.join(self.frontend, candidate)
-            image_info = FrontendImageInfo(self, path)
+            try:
+                image_info = FrontendImageInfo(self, path)
+            except subprocess.CalledProcessError:
+                # If the path doesn't exist anymore, then we raced with something
+                # that deleted the file, so just continue
+                if not os.path.exists(path):
+                    continue
+                else:
+                    raise
             if vm_name is not None:
                 if image_info.vm_name != vm_name:
                     continue
             if image_identifier is not None:
-                if image_info.backend.identifier != image_identifier:
+                if (
+                    image_info.backend is not None
+                    and image_info.backend.identifier != image_identifier
+                ):
                     continue
             images.append(image_info)
         return images
@@ -515,7 +539,13 @@ class ImageStore:
             if not _BACKEND_IMAGE_REGEX.match(candidate):
                 continue
             path = os.path.join(self.backend, candidate)
-            image_info = BackendImageInfo(self, path)
+            try:
+                image_info = BackendImageInfo(self, path)
+            except subprocess.CalledProcessError:
+                if not os.path.exists(path):
+                    continue
+                else:
+                    raise
             if image_identifier is not None:
                 if image_info.identifier != image_identifier:
                     continue
