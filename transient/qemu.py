@@ -136,85 +136,11 @@ class QmpClient:
             raise RuntimeError(f"Invalid argument to register_callback '{id_or_event}'")
 
 
-class QemuOutputProxy:
-    quiet: bool
-    linux_has_started: bool
-    buffer: bytes
-
-    def __init__(self) -> None:
-        self.quiet = False
-        self.buffer = b""
-        self.linux_has_started = False
-
-    def silence(self) -> None:
-        self.quiet = True
-
-    def start(self, proc_handle: "subprocess.Popen[bytes]") -> None:
-        # Start and drop this reference. Because the thread is a daemon it will
-        # be killed when python dies
-        thread = threading.Thread(target=self.__start, args=(proc_handle,))
-        thread.daemon = True
-        thread.start()
-
-    def __start(self, proc_handle: "subprocess.Popen[bytes]") -> None:
-        assert proc_handle.stdout is not None
-
-        # Set the socket to be non-blocking, as we don't want to read in chuncks
-        stdout_handle = proc_handle.stdout
-        fl = fcntl.fcntl(stdout_handle, fcntl.F_GETFL)
-        fcntl.fcntl(stdout_handle, fcntl.F_SETFL, fl | os.O_NONBLOCK)
-
-        # In order to avoid trashing the console with ANSI escape sequences
-        # from grub/whatever is running before the kernel, we wait for output
-        # that looks like a timestamp before we start actually proxying anything
-        timestamp_matcher = re.compile(br"\[[ \d]+\.\d+\]")
-
-        while True:
-            ready, _, err = select.select([stdout_handle], [], [])
-            if self.quiet is True:
-                break
-
-            if len(err) > 0:
-                raise RuntimeError("Error during select in QemuOutputProxy")
-
-            ready_handle = ready[0]
-
-            # Just read whatever is available
-            raw_content = ready_handle.read()
-
-            # In theory this should never happen due to the select, but just to
-            # be safe
-            if raw_content is None:
-                continue
-
-            if self.linux_has_started is False:
-                combined = self.buffer + raw_content
-                position = timestamp_matcher.search(combined)
-                if position is not None:
-                    self.linux_has_started = True
-
-                    # Strip everything in the buffer before the match
-                    raw_content = combined[position.span()[0] :]
-                    self.buffer = b""
-                else:
-                    self.buffer = combined
-                    continue
-
-            # We cannot hold the print lock, because this thread may die at any
-            # point (for example, if a user ctrl-c's). When that happens, if
-            # we hold the print lock, the main thread will crash in an ugly way.
-            sys.stdout.buffer.write(raw_content)
-            sys.stdout.buffer.flush()
-
-        # We are no longer proxying, so close stdout.
-        proc_handle.stdout.close()
-
-
 class QemuRunner:
     bin_name: str
     args: List[str]
     quiet: bool
-    proxy: Optional[QemuOutputProxy]
+    interactive: bool
     qmp_client: Optional[QmpClient]
 
     # As far as I can tell, this _has_ to be quoted. Otherwise, it will
@@ -229,7 +155,7 @@ class QemuRunner:
         bin_name: Optional[str] = None,
         qmp_port: Optional[int] = None,
         quiet: bool = False,
-        silenceable: bool = False,
+        interactive: bool = True,
         qmp_connectable: bool = False,
     ) -> None:
         qmp_port = qmp_port or utils.allocate_random_port()
@@ -237,15 +163,12 @@ class QemuRunner:
         self.quiet = quiet
         self.args = args
         self.proc_handle = None
-        self.proxy = None
         self.qmp_client = None
+        self.interactive = interactive
 
         if qmp_connectable is True:
             self.qmp_client = QmpClient(qmp_port)
             self.args.extend(self.__default_qmp_args(qmp_port))
-
-        if silenceable is True:
-            self.proxy = QemuOutputProxy()
 
     def __default_qmp_args(self, port: int) -> List[str]:
         return ["-qmp", f"tcp:127.0.0.1:{port},server,nowait"]
@@ -263,8 +186,8 @@ class QemuRunner:
 
         if self.quiet is True:
             stdin, stdout, stderr = subprocess.DEVNULL, subprocess.DEVNULL, None
-        if self.proxy is not None:
-            stdin, stdout, stderr = subprocess.DEVNULL, subprocess.PIPE, None
+        elif self.interactive is False:
+            stdin, stdout, stderr = subprocess.DEVNULL, None, None
 
         self.proc_handle = subprocess.Popen(
             [self.bin_name] + self.args,
@@ -276,17 +199,7 @@ class QemuRunner:
             preexec_fn=lambda: linux.set_death_signal(signal.SIGTERM),
         )
 
-        if self.proxy is not None:
-            self.proxy.start(self.proc_handle)
         return self.proc_handle
-
-    def silence(self) -> None:
-        if self.quiet is True:
-            return
-        elif self.proxy is not None:
-            self.proxy.silence()
-        else:
-            raise RuntimeError("Attempt to silence QemuRunner that is not silenceable")
 
     def wait(self, timeout: Optional[int] = None) -> int:
         if self.proc_handle is None:

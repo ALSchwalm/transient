@@ -244,7 +244,7 @@ class TransientVm:
 
         if self.__needs_ssh():
             if self.__needs_ssh_console():
-                new_args.append("-nographic")
+                new_args.extend(["-serial", "stdio", "-display", "none"])
 
             if self.config.ssh_port is None:
                 ssh_port = utils.allocate_random_port()
@@ -276,9 +276,6 @@ class TransientVm:
 
         client = ssh.SshClient(config=self.ssh_config, command=self.config.ssh_command)
         conn = client.connect_stdout(timeout=self.config.ssh_timeout)
-
-        # The SSH connection has been established. Silence the serial console
-        self.qemu_runner.silence()
 
         conn.wait()
         return conn.returncode
@@ -369,12 +366,10 @@ class TransientVm:
         full_qemu_args = added_qemu_args + list(self.config.qemu_args)
 
         # If we are using the SSH console, we need to do _something_ with QEMU output.
-        qemu_quiet, qemu_silenceable = False, False
+        qemu_quiet, qemu_interactive = False, True
         if self.__needs_ssh_console():
-            if self.config.ssh_with_serial is True:
-                qemu_quiet, qemu_silenceable = False, True
-            else:
-                qemu_quiet, qemu_silenceable = True, False
+            qemu_interactive = False
+            qemu_quiet = not self.config.ssh_with_serial
 
         # Note that we must _not_ use QMP if we aren't using the SSH connection, because
         # passing the `-qmp` arg causes QEMU to terminate on SIGINT, even when in
@@ -382,7 +377,7 @@ class TransientVm:
         self.qemu_runner = qemu.QemuRunner(
             full_qemu_args,
             quiet=qemu_quiet,
-            silenceable=qemu_silenceable,
+            interactive=qemu_interactive,
             qmp_connectable=self.__needs_ssh_console(),
         )
 
