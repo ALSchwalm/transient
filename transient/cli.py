@@ -156,6 +156,11 @@ def cli_entry(verbose: int) -> None:
     help="The time in seconds to wait for the QEMU QMP connection to be established",
 )
 @click.option(
+    "-copy-timeout",
+    default=None,
+    help="The maximum time to wait for a copy-in-before or copy-out-after operation to complete",
+)
+@click.option(
     "-shared-folder",
     "-s",
     default=[],

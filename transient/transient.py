@@ -25,9 +25,6 @@ if TYPE_CHECKING:
 else:
     Environ = os._Environ
 
-# Maximum time to run virt-copy-in/out before failing
-_MAX_COPY_TIME = 500
-
 
 class TransientProcessError(Exception):
     returncode: int
@@ -148,13 +145,15 @@ class TransientVm:
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
             )
-            _, raw_stderr = handle.communicate(timeout=_MAX_COPY_TIME)
+            _, raw_stderr = handle.communicate(timeout=self.config.copy_timeout)
             if handle.poll() == 0:
                 return
         except subprocess.TimeoutExpired:
             handle.terminate()
             _, raw_stderr = handle.communicate()
-            logging.error(f"{cmd_name} timed out after {_MAX_COPY_TIME} seconds")
+            logging.error(
+                f"{cmd_name} timed out after {self.config.copy_timeout} seconds"
+            )
         stderr = raw_stderr.decode("utf-8").strip()
         raise RuntimeError(f"{cmd_name} failed: {stderr}")
 
