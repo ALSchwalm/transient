@@ -412,7 +412,7 @@ class TransientVm:
         if self.__needs_ssh_console():
             # Now wait until the QMP connection is established (this should be very fast).
             assert self.qemu_runner.qmp_client is not None
-            self.qemu_runner.qmp_client.connect()
+            self.qemu_runner.qmp_client.connect(self.config.qmp_timeout)
 
             # Note that we always return the SSH exit code, even if the guest failed to
             # shut down. This ensures the shutdown_timeout=0 case is handled as expected.

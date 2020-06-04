@@ -17,7 +17,6 @@ from typing import Any, Dict, DefaultDict, List, Optional, Callable, Union
 from . import linux
 from . import utils
 
-_QMP_CONNECTION_TIMEOUT = 4
 _QMP_DELAY_BETWEEN = 0.2
 QMP_DEFAULT_SYNC_TIME = 5
 QmpMessage = Dict[Any, Any]
@@ -47,10 +46,10 @@ class QmpClient:
         self.file.write((json.dumps(msg) + "\r\n").encode("utf-8"))
         self.file.flush()
 
-    def connect(self) -> None:
+    def connect(self, timeout: float) -> None:
         logging.info(f"Connecting to QMP socket at 127.0.0.1:{self.port}")
         start = time.time()
-        while time.time() - start < _QMP_CONNECTION_TIMEOUT:
+        while time.time() - start < timeout:
             try:
                 self.sock = socket.create_connection(("127.0.0.1", self.port))
                 logging.debug("QMP connection established")

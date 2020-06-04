@@ -151,6 +151,11 @@ def cli_entry(verbose: int) -> None:
     help="The time to wait for shutdown before terminating QEMU",
 )
 @click.option(
+    "-qmp-timeout",
+    default=10,
+    help="The time in seconds to wait for the QEMU QMP connection to be established",
+)
+@click.option(
     "-shared-folder",
     "-s",
     default=[],
