@@ -11,3 +11,4 @@ nav:
     - Feature Details:
       - 'Using Shared Folders': details/shared-folders.md
       - 'Usage with Docker': details/docker.md
+      - 'Getting Images': details/images.md

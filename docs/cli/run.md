@@ -41,8 +41,9 @@ machine. These options are described below:
 - `-name NAME`: Associated downloaded disk images with `NAME`. Subsequent invocations
 of `transient` with the same name and `-image` flags will boot with the same disks.
 
-- `-image IMG [IMG ...]`: Downloads the requested virtual disk to backend and
+- `-image IMAGESPEC`: Downloads the requested virtual disk to backend and
 creates a copy in the disk frontend. This disk will be passed to the virtual machine.
+For additional information, see [Getting Images](/details/images/).
 
 - `-image-frontend FRONTEND`: Use the provided `FRONTEND` path as the location to
 place the per-vm image copies. Note: this path defaults to
@@ -78,7 +79,7 @@ timeout, the guest is terminated.
 
 - `-shared-folder FOLDERSPEC`: A `FOLDERSPEC` consists of two paths joined with a colon.
 For example `/path/on/host:/path/on/guest`. For additional information, see [Using
-Shared Folders](/examples/shared-folders/).
+Shared Folders](/details/shared-folders/).
 
 - `-prepare-only`: `transient` will exit after performing the disk download/creation
 steps outlined above. It will not start the guest virtual machine.
