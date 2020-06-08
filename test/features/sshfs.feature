@@ -7,7 +7,7 @@ Feature: SSH Console
   Scenario: Run VM with a single SSHFS mount
     Given a transient vm
       And a disk image "centos/7:2004.01"
-      And a sshfs mount of "sync:/mnt"
+      And a sshfs mount of "resources/sync:/mnt"
       And a ssh command "ls /mnt"
      When the vm runs to completion
      Then the return code is 0

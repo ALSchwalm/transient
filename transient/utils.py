@@ -1,8 +1,11 @@
 import distutils.util
 import logging
+import itertools
 import os
 import pathlib
+import progressbar  # type: ignore
 import socket
+import subprocess
 import tempfile
 
 try:
@@ -11,8 +14,11 @@ except ImportError:
     # Try backported to PY<37 `importlib_resources`.
     import importlib_resources as pkg_resources  # type: ignore
 
-from typing import cast, Optional, ContextManager
+from typing import cast, Optional, ContextManager, List, Union, IO, Any
 from . import static
+
+# From the typeshed Popen definitions
+FILE_TYPE = Union[None, int, IO[Any]]
 
 
 def prompt_yes_no(prompt: str, default: Optional[bool] = None) -> bool:
@@ -96,3 +102,117 @@ def extract_static_file(key: str, destination: str) -> None:
         # The rename is done atomically, so even if we race with another
         # processes, SSH will definitely get the full file contents
         os.rename(f.name, destination)
+
+
+def join_absolute_paths(path: str, *paths: str) -> str:
+    return os.path.join(path, *[p.lstrip("/") for p in paths])
+
+
+def prepare_file_operation_bar(filesize: int) -> progressbar.ProgressBar:
+    return progressbar.ProgressBar(
+        maxval=filesize,
+        widgets=[
+            progressbar.Percentage(),
+            " ",
+            progressbar.Bar(),
+            " ",
+            progressbar.FileTransferSpeed(),
+            " | ",
+            progressbar.DataSize(),
+            " | ",
+            progressbar.ETA(),
+        ],
+    )
+
+
+def copy_with_progress(
+    source: IO[bytes],
+    destination: IO[bytes],
+    bar: Union[progressbar.ProgressBar, int],
+    block_size: int = 64 * 1024,
+) -> None:
+    if isinstance(bar, int):
+        prog_bar = prepare_file_operation_bar(bar)
+    else:
+        prog_bar = bar
+
+    for idx in itertools.count():
+        block = source.read(block_size)
+        if not block:
+            break
+        destination.write(block)
+        prog_bar.update(idx * block_size)
+    prog_bar.finish()
+
+
+def run_check_retcode(
+    cmd: List[str], *, timeout: Optional[int] = None, redirect_stdout: bool = True
+) -> Optional[str]:
+    stdout: Optional[int] = subprocess.PIPE
+    if redirect_stdout is False:
+        stdout = None
+
+    try:
+        handle = subprocess.run(
+            cmd,
+            stdin=subprocess.DEVNULL,
+            stdout=stdout,
+            stderr=subprocess.PIPE,
+            check=True,
+            timeout=timeout,
+        )
+        if handle.stdout is not None:
+            return handle.stdout.decode("utf-8")
+        else:
+            return None
+    except subprocess.CalledProcessError as e:
+        raise TransientProcessError(
+            cmd=e.cmd, returncode=e.returncode, stdout=e.stdout, stderr=e.stderr
+        )
+    except subprocess.TimeoutExpired as e:
+        raise TransientProcessError(cmd=e.cmd, stdout=e.stdout, stderr=e.stderr)
+
+
+class TransientProcessError(Exception):
+    cmd: Optional[List[str]]
+    returncode: Optional[int]
+    msg: Optional[str]
+    stdout: Optional[str]
+    stderr: Optional[str]
+
+    def __init__(
+        self,
+        *,
+        cmd: Optional[List[str]] = None,
+        returncode: Optional[int] = None,
+        msg: Optional[str] = None,
+        stdout: Optional[bytes] = None,
+        stderr: Optional[bytes] = None,
+    ):
+        self.cmd = cmd
+        self.returncode = returncode
+        self.msg = msg
+
+        if stdout is not None:
+            self.stdout = stdout.decode("utf-8")
+        else:
+            self.stdout = None
+
+        if stderr is not None:
+            self.stderr = stderr.decode("utf-8")
+        else:
+            self.stderr = None
+
+    def __str__(self) -> str:
+        ret = ""
+        if self.msg is not None:
+            ret += f"{self.msg}: "
+        if self.cmd is not None:
+            ret += f"{self.cmd}"
+        if self.returncode is not None:
+            ret += f" exited with return code {self.returncode}"
+        if self.stdout is not None:
+            ret += f"\n----STDOUT----\n{self.stdout}"
+        if self.stderr is not None:
+            ret += f"\n----STDERR----\n{self.stderr}"
+        return ret

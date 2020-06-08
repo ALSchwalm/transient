@@ -1,0 +1,726 @@
+import enum
+import os
+import lark  # type: ignore
+import logging
+import pathlib
+import shutil
+import subprocess
+
+from . import configuration
+from . import qemu
+from . import image
+from . import utils
+from . import ssh
+from . import static
+
+from typing import cast, Any, Sequence, Callable, List, Optional, TypeVar, Type
+
+
+IMAGEFILE_GRAMMAR = r"""
+start: (instruction | _NEWLINE | COMMENT)+
+instruction: run | copy | from | disk | partition | add | inspect
+run: "RUN"i run_body _NEWLINE
+run_body: RUN_CMD+
+RUN_CMD: /[^\\\n]/+
+
+copy: "COPY"i copy_source+ copy_destination _NEWLINE
+copy_source: PATH
+copy_destination: PATH
+PATH: /[^ \t\n\\]/i+
+
+add: "ADD"i add_source+ add_destination _NEWLINE
+add_source: PATH
+add_destination: PATH
+
+from: "FROM"i FROM_SPEC _NEWLINE
+FROM_SPEC: /[^ \t\n\\]/+
+
+disk: "DISK"i DISK_SIZE DISK_UNITS DISK_TYPE _NEWLINE
+DISK_SIZE: /\d/i+
+DISK_UNITS: /[MG]b/i
+DISK_TYPE: "GPT"i | "MBR"i
+
+inspect: "INSPECT"i _NEWLINE
+
+partition: "PARTITION"i PARTITION_NUM partition_size? partition_format? partition_mount? partition_flags? _NEWLINE
+PARTITION_NUM: /\d/+
+partition_size: "SIZE"i DISK_SIZE DISK_UNITS
+partition_mount: "MOUNT"i PATH
+partition_format: "FORMAT"i PART_FORMAT
+partition_flags: "FLAGS"i PART_FLAG ("," PART_FLAG)*
+PART_FLAG: "BOOT"i | "EFI"i | "BIOS_GRUB"i
+PART_FORMAT: /[^ \t\n\\]/i+
+
+COMMENT: /#[^\n]*/
+
+%import common.NEWLINE -> _NEWLINE
+%import common.WS_INLINE
+%ignore WS_INLINE
+%ignore COMMENT
+%ignore /\\[\t \f]*\r?\n/   // LINE_CONT
+"""
+IMAGEFILE_PARSER = lark.Lark(IMAGEFILE_GRAMMAR, parser="lalr").parse
+
+
+class Command:
+    def run(self) -> None:
+        ...
+
+
+class HostCommand(Command):
+    # Use 'Any' here, and the cast later to work around:
+    # https://github.com/python/mypy/issues/708
+    cmd: Any
+
+    def __init__(self, cmd: Callable[[], None]):
+        self.cmd = cmd
+
+    def run(self) -> None:
+        return cast(None, self.cmd())
+
+
+class GuestCommand(Command):
+    cmd: str
+    ssh_config: ssh.SshConfig
+    connect_timeout: int
+    run_timeout: Optional[int]
+    stdin: utils.FILE_TYPE
+
+    def __init__(
+        self,
+        cmd: str,
+        ssh_config: ssh.SshConfig,
+        connect_timeout: int,
+        run_timeout: Optional[int] = None,
+        stdin: utils.FILE_TYPE = subprocess.DEVNULL,
+    ):
+        self.cmd = cmd
+        self.ssh_config = ssh_config
+        self.connect_timeout = connect_timeout
+        self.run_timeout = run_timeout
+        self.stdin = stdin
+
+    def run(self) -> None:
+        client = ssh.SshClient(self.ssh_config, command=self.cmd)
+
+        # Connect stdout/stderr normally
+        handle = client.connect(
+            self.connect_timeout, stdin=self.stdin, stdout=None, stderr=None
+        )
+
+        result = handle.wait(self.run_timeout)
+        if result != 0:
+            raise RuntimeError(f"Command '{self.cmd}' failed with code {result}")
+
+
+class GuestChrootCommand(GuestCommand):
+    def __init__(
+        self,
+        cmd: str,
+        ssh_config: ssh.SshConfig,
+        connect_timeout: int,
+        run_timeout: Optional[int] = None,
+    ):
+        escaped_command = cmd.replace("'", "'\\''")
+        chroot_command = (
+            f"""unshare --fork --pid chroot /mnt /bin/bash -c '{escaped_command}' """
+        )
+        super().__init__(chroot_command, ssh_config, connect_timeout, run_timeout)
+
+
+class ImageInstruction:
+    def commands(self, builder: "ImageBuilder") -> Sequence[Command]:
+        return []
+
+
+class InspectInstruction(ImageInstruction):
+    def __init__(self, _ast: lark.tree.Tree) -> None:
+        pass
+
+    def __str__(self) -> str:
+        return f"INSPECT"
+
+
+class RunInstruction(ImageInstruction):
+    command: str
+
+    def __init__(self, ast: lark.tree.Tree) -> None:
+        self.command = " ".join([c.value for c in ast.children[0].children])
+
+    def commands(self, builder: "ImageBuilder") -> Sequence[Command]:
+        return [
+            GuestChrootCommand(
+                self.command, builder.ssh_config, builder.config.ssh_timeout
+            )
+        ]
+
+    def __str__(self) -> str:
+        return f"RUN {self.command}"
+
+
+class CopyInstruction(ImageInstruction):
+    source: List[str]
+    destination: str
+
+    def __init__(self, ast: lark.tree.Tree) -> None:
+        self.source = [node.children[0].value for node in ast.find_data("copy_source")]
+        self.destination = next(ast.find_data("copy_destination")).children[0].value
+
+    def commands(self, builder: "ImageBuilder") -> Sequence[Command]:
+        commands = []
+        effective_destination = utils.join_absolute_paths("/mnt", self.destination)
+        for src in self.source:
+            host_src = os.path.join(builder.config.build_dir, src)
+            commands.append(
+                HostCommand(
+                    lambda: ssh.scp(src, effective_destination, builder.ssh_config)
+                )
+            )
+        return commands
+
+    def __str__(self) -> str:
+        return "COPY {} {}".format(" ".join(self.source), self.destination)
+
+
+class AddInstruction(ImageInstruction):
+    source: List[str]
+    destination: str
+
+    def __init__(self, ast: lark.tree.Tree) -> None:
+        self.source = [node.children[0].value for node in ast.find_data("add_source")]
+        self.destination = next(ast.find_data("add_destination")).children[0].value
+
+    def __is_compressed(self, name: str) -> bool:
+        return name.endswith(".tar.gz") or name.endswith(".tar.xz")
+
+    def commands(self, builder: "ImageBuilder") -> Sequence[Command]:
+        commands: List[Command] = []
+        effective_destination = utils.join_absolute_paths("/mnt", self.destination)
+        for src in self.source:
+            host_src = os.path.join(builder.config.build_dir, src)
+            if not self.__is_compressed(src):
+                commands.append(
+                    HostCommand(
+                        lambda: ssh.scp(
+                            host_src, effective_destination, builder.ssh_config
+                        )
+                    )
+                )
+            else:
+                commands.append(
+                    GuestCommand(
+                        f"tar xzf - --directory={effective_destination}",
+                        builder.ssh_config,
+                        builder.config.ssh_timeout,
+                        stdin=open(host_src, "rb"),
+                    )
+                )
+        return commands
+
+    def __str__(self) -> str:
+        return "ADD {} {}".format(" ".join(self.source), self.destination)
+
+
+class DiskInstruction(ImageInstruction):
+    size: int
+    units: str
+    type: str
+
+    def __init__(self, ast: lark.tree.Tree) -> None:
+        self.size = int(ast.children[0].value)
+        self.units = ast.children[1].value.upper().replace("B", "")
+        self.type = ast.children[2].value.upper()
+
+    def commands(self, builder: "ImageBuilder") -> Sequence[Command]:
+        return [
+            GuestCommand(
+                f"echo label:{self.type} | sfdisk /dev/sda",
+                builder.ssh_config,
+                builder.config.ssh_timeout,
+            )
+        ]
+
+    def __str__(self) -> str:
+        return f"DISK {self.size}{self.units} {self.type}"
+
+
+class PartitionInstruction(ImageInstruction):
+    size: Optional[int]
+    format: Optional[str]
+    mount: Optional[str]
+    flags: Optional[List[str]]
+    number: int
+
+    def __init__(self, ast: lark.tree.Tree) -> None:
+        self.number = int(ast.children[0].value)
+
+        format = next(ast.find_data("partition_format"), None)
+        if format is not None:
+            self.format = format.children[0].value.lower()
+            if self.format not in self.__supported_formats():
+                raise RuntimeError(f"Unsupported partition format '{self.format}'")
+        else:
+            self.format = None
+
+        mount = next(ast.find_data("partition_mount"), None)
+        if mount is not None:
+            self.mount = mount.children[0].value
+        else:
+            self.mount = None
+
+        size = next(ast.find_data("partition_size"), None)
+        if size is not None:
+            self.units = size.children[1].value.upper()
+            self.size = int(size.children[0].value)
+        else:
+            self.units = None
+            self.size = None
+
+        flags = next(ast.find_data("partition_flags"), None)
+        if flags is not None:
+            self.flags = [child.value.lower() for child in flags.children]
+        else:
+            self.flags = None
+
+    def __supported_formats(self) -> List[str]:
+        return ["ext2", "ext3", "ext4", "xfs"]
+
+    def commands(self, builder: "ImageBuilder") -> Sequence[Command]:
+        partition_cmd = ""
+        if self.size is not None:
+            partition_cmd += f"size={self.size}{self.units},"
+
+        if self.flags is not None:
+            for flag in self.flags:
+                if flag == "boot":
+                    partition_cmd += "bootable,"
+                elif flag == "efi":
+                    partition_cmd += "type=U,"
+                elif flag == "bios_grub":
+                    # The BIOS boot GPT GUID
+                    partition_cmd += "type=21686148-6449-6E6F-744E-656564454649,"
+
+        # Mark anything that doesn't have an explicit type as Linux
+        if partition_cmd == "":
+            partition_cmd += "type=L,"
+
+        commands = [
+            GuestCommand(
+                f"echo '{partition_cmd}' | sfdisk /dev/sda -a",
+                builder.ssh_config,
+                builder.config.ssh_timeout,
+            )
+        ]
+
+        if self.format is not None:
+            commands.append(
+                GuestCommand(
+                    f"mkfs.{self.format} /dev/sda{self.number}",
+                    builder.ssh_config,
+                    builder.config.ssh_timeout,
+                )
+            )
+
+        return commands
+
+    def __str__(self) -> str:
+        output = f"PARTITION {self.number} "
+        if self.size is not None:
+            output += f"SIZE {self.size}MB "
+        if self.format is not None:
+            output += f"FORMAT {self.format} "
+        if self.mount is not None:
+            output += f"MOUNT {self.mount} "
+        if self.flags is not None:
+            output += "FLAGS "
+            for flag in self.flags:
+                output += f"{flag} "
+        return output.strip()
+
+
+class FromInstruction(ImageInstruction):
+    source: str
+
+    def __init__(self, ast: lark.tree.Tree) -> None:
+        self.source = ast.children[0].value
+
+    def __str__(self) -> str:
+        return f"FROM {self.source}"
+
+
+def _build_instruction(ast: lark.tree.Tree) -> ImageInstruction:
+    cmd = ast.children[0]
+    if cmd.data == "run":
+        return RunInstruction(cmd)
+    elif cmd.data == "inspect":
+        return InspectInstruction(cmd)
+    elif cmd.data == "copy":
+        return CopyInstruction(cmd)
+    elif cmd.data == "add":
+        return AddInstruction(cmd)
+    elif cmd.data == "disk":
+        return DiskInstruction(cmd)
+    elif cmd.data == "partition":
+        return PartitionInstruction(cmd)
+    elif cmd.data == "from":
+        return FromInstruction(cmd)
+    else:
+        raise RuntimeError(f"Unsupported build instruction: '{cmd.data}'")
+
+
+T = TypeVar("T")
+
+
+class ImageBuilder:
+    config: configuration.Config
+    build_dir: str
+    store: image.ImageStore
+    instructions: List[ImageInstruction]
+    qemu: qemu.QemuRunner
+    from_instruction: FromInstruction
+    chroot_ready: bool
+
+    def __init__(self, config: configuration.Config, store: image.ImageStore) -> None:
+        self.chroot_ready = False
+        self.config = config
+        self.store = store
+
+        if config.file is None:
+            imagefile_path = os.path.join(self.config.build_dir, "Imagefile")
+        else:
+            imagefile_path = config.file
+
+        logging.info(f"Parsing Imagefile at '{imagefile_path}'")
+        with open(imagefile_path, "r") as file:
+            contents = file.read()
+            parsed = IMAGEFILE_PARSER(contents)
+            self.instructions = [
+                _build_instruction(instr) for instr in parsed.find_data("instruction")
+            ]
+
+        logging.info("Validating Imagefile")
+        self.__validate()
+
+    def __is_from_scratch(self) -> bool:
+        return self.from_instruction.source.lower() == "scratch"
+
+    def __instruction_type(self, instr_type: Type[T]) -> List[T]:
+        return [instr for instr in self.instructions if isinstance(instr, instr_type)]
+
+    def __validate(self) -> None:
+        from_instructions = self.__instruction_type(FromInstruction)
+        if len(from_instructions) != 1:
+            raise RuntimeError("Exactly one FROM instruction must appear per Imagefile")
+        self.from_instruction = from_instructions[0]
+
+        # TODO: remove this once we support non-from-scratch builds
+        if not self.__is_from_scratch():
+            raise NotImplementedError("Only FROM scratch images can be built currently")
+
+        disk_instructions = self.__instruction_type(DiskInstruction)
+        part_instructions = self.__instruction_type(PartitionInstruction)
+
+        if len(disk_instructions) > 1:
+            raise RuntimeError("Only one DISK instruction can appear per Imagefile")
+
+        if self.__is_from_scratch():
+            if len(disk_instructions) == 0:
+                raise RuntimeError(
+                    "Exactly one DISK instruction must appear in images built from scratch"
+                )
+            if len(part_instructions) == 0:
+                raise RuntimeError(
+                    "At least one PARTITION instruction must appear in images built from scratch"
+                )
+            if not any([instr.mount == "/" for instr in part_instructions]):
+                raise RuntimeError("At least one PARTITION instruction must mount at /")
+        elif len(disk_instructions) > 0 or len(part_instructions) > 0:
+            raise RuntimeError(
+                "DISK and PARTITION instructions can only appear on images built from scratch"
+            )
+
+        # Simple state machine to ensure the Imagefile is in a rational order
+        class ImagefileSection(enum.Enum):
+            FROM = (0,)
+            DISK = (1,)
+            PARTITION = (2,)
+            EXECUTE = 3
+
+        section = None
+        for instr in self.instructions:
+            if isinstance(instr, FromInstruction):
+                if section is not None:
+                    raise RuntimeError(
+                        "FROM instruction must appear before any other instructions"
+                    )
+                else:
+                    section = ImagefileSection.FROM
+                    continue
+            elif isinstance(instr, DiskInstruction):
+                if section != ImagefileSection.FROM:
+                    raise RuntimeError(
+                        "DISK instruction must appear immediately after FROM instruction"
+                    )
+                else:
+                    section = ImagefileSection.DISK
+                    continue
+            elif isinstance(instr, PartitionInstruction):
+                if (
+                    section != ImagefileSection.DISK
+                    and section != ImagefileSection.PARTITION
+                ):
+                    raise RuntimeError(
+                        "PARTITION instructions must appear immediately after DISK instruction"
+                    )
+                else:
+                    section = ImagefileSection.PARTITION
+                    continue
+            else:
+                section = ImagefileSection.EXECUTE
+
+    def __spawn_qemu(self, new_disk: str, ssh_port: int) -> "subprocess.Popen[bytes]":
+        with utils.package_file_path(
+            "transient-kernel"
+        ) as kernel, utils.package_file_path("transient-initramfs") as initramfs:
+            self.qemu = qemu.QemuRunner(
+                [
+                    # Use kvm if available
+                    "-machine",
+                    "accel=kvm:tcg",
+                    # Arbitrary cpu/mem
+                    # TODO: this should be configurable
+                    "-smp",
+                    "2",
+                    "-m",
+                    "1G",
+                    # Use our kernel/initramfs
+                    "-kernel",
+                    str(kernel),
+                    "-initrd",
+                    str(initramfs),
+                    "-append",
+                    "console=ttyS0",
+                    # Don't require graphics
+                    "-serial",
+                    "stdio",
+                    "-display",
+                    "none",
+                    "-nographic",
+                    # Expose a fake hardware rng for faster boot
+                    "-device",
+                    "virtio-rng-pci",
+                    # Pass the disk through to the guest (using virtio)
+                    "-device",
+                    "virtio-scsi-pci,id=scsi",
+                    "-drive",
+                    f"file={new_disk},id=hd0,if=none",
+                    "-device",
+                    "scsi-hd,drive=hd0",
+                    # Expose the SSH device
+                    "-netdev",
+                    f"user,id=transient-sshdev,hostfwd=tcp::{ssh_port}-:22",
+                    "-device",
+                    "virtio-net-pci,netdev=transient-sshdev",
+                ],
+                quiet=True,
+                qmp_connectable=True,
+                interactive=False,
+            )
+            handle = self.qemu.start()
+
+            # Block until the qmp connection completes so we know it is ok to
+            # (potentially) delete the kernel/initramfs
+            assert self.qemu.qmp_client is not None
+            self.qemu.qmp_client.connect(self.config.qmp_timeout)
+            return handle
+
+    def __print_step(self, instruction: ImageInstruction) -> None:
+        total_steps = len(self.instructions)
+        idx = self.instructions.index(instruction) + 1
+        print(f"Step {idx}/{total_steps} : {instruction}")
+
+    def __prepare_new_image(self) -> str:
+        self.__print_step(self.from_instruction)
+
+        name = image.storage_safe_encode(self.config.name)
+        if self.config.local is True:
+            # If this is a local (non-backend) build, then use the build dir for
+            # the working image as well, so we can atomically rename at the end
+            working = os.path.join(self.config.build_dir, f"{name}.working")
+        else:
+            working = os.path.join(self.store.working, name)
+
+        if not self.__is_from_scratch():
+            existing = self.store.retrieve_image(self.from_instruction.source).path
+            logging.info(f"Copying backend file as base of new image at '{working}'")
+            with open(existing, "rb") as source, open(working, "rb") as dest:
+                # Get the size of the source for the progress bar
+                size = source.seek(0, os.SEEK_END)
+                source.seek(0)
+                utils.copy_with_progress(source, dest, size)
+        else:
+            logging.info(f"Creating new image at '{working}'")
+            disk = self.__instruction_type(DiskInstruction)[0]
+
+            self.__print_step(disk)
+
+            utils.run_check_retcode(
+                [
+                    self.store.qemu_img_bin,
+                    "create",
+                    "-f",
+                    "qcow2",
+                    working,
+                    f"{disk.size}{disk.units}",
+                ]
+            )
+        return working
+
+    def __run_command_in_guest(self, command: str, allowfail: bool = False) -> None:
+        try:
+            GuestCommand(command, self.ssh_config, self.config.ssh_timeout).run()
+        except:
+            if allowfail is False:
+                raise
+
+    def __run_command_in_guest_chroot(
+        self, command: str, allowfail: bool = False
+    ) -> None:
+        try:
+            GuestChrootCommand(command, self.ssh_config, self.config.ssh_timeout).run()
+        except:
+            if allowfail is False:
+                raise
+
+    def __inspect_guest_chroot(self) -> None:
+        config = self.ssh_config.override(args=[*self.ssh_config.args, "-t"])
+        client = ssh.SshClient(
+            config, command="unshare --fork --pid chroot /mnt /bin/bash"
+        )
+
+        # Connect everything normally
+        handle = client.connect(
+            self.config.ssh_timeout, stdin=None, stdout=None, stderr=None
+        )
+
+        # Wait until the user chooses to exit
+        handle.wait()
+
+    def __prepare_chroot(self) -> None:
+        # Adapted from arch-chroot
+        self.__run_command_in_guest(
+            'mount udev "/mnt/dev" -t devtmpfs -o mode=0755,nosuid', allowfail=True
+        )
+        self.__run_command_in_guest(
+            'mount proc "/mnt/proc" -t proc -o nosuid,noexec,nodev', allowfail=True
+        )
+        self.__run_command_in_guest(
+            'mount sys "/mnt/sys" -t sysfs -o nosuid,noexec,nodev,ro', allowfail=True
+        )
+        self.__run_command_in_guest(
+            'mount devpts "/mnt/dev/pts" -t devpts -o mode=0620,gid=5,nosuid,noexec',
+            allowfail=True,
+        )
+        self.__run_command_in_guest(
+            'mount shm "/mnt/dev/shm" -t tmpfs -o mode=1777,nosuid,nodev', allowfail=True
+        )
+        self.__run_command_in_guest('mount /run "/mnt/run" --bind', allowfail=True)
+        self.__run_command_in_guest(
+            'mount tmp "/mnt/tmp" -t tmpfs -o mode=1777,strictatime,nodev,nosuid',
+            allowfail=True,
+        )
+        self.__run_command_in_guest(
+            "cp -p /etc/resolv.conf /mnt/etc/resolv.conf", allowfail=True
+        )
+        self.chroot_ready = True
+
+    def __partition_instructions_by_mount(
+        self, instructions: List[PartitionInstruction]
+    ) -> List[PartitionInstruction]:
+        mountable = [instr for instr in instructions if instr.mount is not None]
+
+        def sort_key(instr: PartitionInstruction) -> int:
+            assert instr.mount is not None
+            return len(pathlib.Path(instr.mount).parts)
+
+        return sorted(mountable, key=sort_key)
+
+    def __prepare_chroot_early(self) -> None:
+        if self.__is_from_scratch():
+            disk_cmd = self.__instruction_type(DiskInstruction)[0]
+            for cmd in disk_cmd.commands(self):
+                cmd.run()
+
+            partition_instructions = self.__instruction_type(PartitionInstruction)
+            for partition_instr in partition_instructions:
+                self.__print_step(partition_instr)
+                for cmd in partition_instr.commands(self):
+                    cmd.run()
+
+            # Now that the partitions are created and formatted, mount them in the
+            # required order
+            ordered_partitions = self.__partition_instructions_by_mount(
+                partition_instructions
+            )
+            for partition_instr in ordered_partitions:
+                self.__run_command_in_guest(
+                    f"mkdir -p /mnt/{partition_instr.mount}", allowfail=True
+                )
+                self.__run_command_in_guest(
+                    f"mount /dev/sda{partition_instr.number} /mnt/{partition_instr.mount}"
+                )
+        else:
+            # TODO: find and read /etc/fstab, then do the mounts
+            pass
+
+    def __is_executable_instruction(self, instr: ImageInstruction) -> bool:
+        return isinstance(instr, RunInstruction) or isinstance(instr, InspectInstruction)
+
+    def build(self) -> str:
+        new_image = self.__prepare_new_image()
+
+        self.ssh_config = ssh.SshConfig(
+            host="127.0.0.1", port=utils.allocate_random_port(), user="root"
+        )
+
+        self.__spawn_qemu(new_image, self.ssh_config.port)
+
+        # Mount the partitions to the expected locations, but don't do any other
+        # mounts in the chroot (/dev, /tmp, etc) because if this is a FROM scratch
+        # build, those locations won't exit yet.
+        self.__prepare_chroot_early()
+
+        for instr in self.instructions:
+            # FROM, DISK and PARTITION instructions have already been handled
+            if (
+                isinstance(instr, FromInstruction)
+                or isinstance(instr, DiskInstruction)
+                or isinstance(instr, PartitionInstruction)
+            ):
+                continue
+            elif self.__is_executable_instruction(instr) and self.chroot_ready is False:
+                # Now that we have a RUN instruction, the extraction of the base
+                # filesystem must have happened, so we can finish preparing
+                # the chroot.
+                self.__prepare_chroot()
+
+            self.__print_step(instr)
+
+            # If this is an inspect instruction, don't try to run anything
+            if isinstance(instr, InspectInstruction):
+                self.__inspect_guest_chroot()
+                continue
+
+            for cmd in instr.commands(self):
+                cmd.run()
+
+        self.qemu.shutdown()
+
+        # Everything is done. Move the built image to its destination
+        if self.config.local is True:
+            destination = os.path.join(self.config.build_dir, f"{self.config.name}.qcow2")
+        else:
+            destination = self.store.backend_path(image.ImageSpec(self.config.name))
+        os.rename(new_image, destination)
+
+        return destination

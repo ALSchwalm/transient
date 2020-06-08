@@ -7,6 +7,7 @@ transient.egg-info/
 build/
 dist/
 transient-kernel/
+working/
 
 # artifacts produced from testing
 artifacts

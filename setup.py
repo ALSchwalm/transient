@@ -29,6 +29,7 @@ setup(
         "click==7.1.2",
         "importlib-resources==1.5.0",
         "marshmallow==3.6.1",
+        "lark-parser==0.8.5",
         "progressbar2==3.51.3",
         "requests==2.23.0",
         "toml==0.10.1",

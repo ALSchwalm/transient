@@ -4,6 +4,7 @@ import signal
 import sys
 
 from . import configuration
+from . import build
 from . import image
 from . import transient
 from . import utils
@@ -196,7 +197,7 @@ def run_impl(**kwargs: Any) -> None:
     try:
         trans.run()
         sys.exit(0)
-    except transient.TransientProcessError as e:
+    except utils.TransientProcessError as e:
         sys.exit(e.returncode)
 
 
@@ -275,6 +276,38 @@ def list_impl(**kwargs: Any) -> None:
     if len(backend) > 0:
         print("\nBackend Images:")
         print(backend)
+    sys.exit(0)
+
+
+@click.help_option("-h", "--help")
+@click.option("-file", "-f", help="Specify a path to the Imagefile")
+@click.option(
+    "-image-backend",
+    help="The location to place the shared, read-only backing disk images",
+)
+@click.option(
+    "-ssh-timeout", default=90, help="Time to wait for SSH connection before failing"
+)
+@click.option(
+    "-qmp-timeout",
+    default=10,
+    help="The time in seconds to wait for the QEMU QMP connection to be established",
+)
+@click.option(
+    "-local", is_flag=True, help="Produce image in the build-dir instead of the backend",
+)
+@click.option("-name", help="The name given to the new image", required=True)
+@click.argument("build-dir")
+@cli_entry.command("build")
+def build_impl(**kwargs: Any) -> None:
+    """List transient disk information"""
+    try:
+        config = configuration.create_transient_build_config(kwargs)
+    except configuration.CLIArgumentError:
+        sys.exit(1)
+    store = image.ImageStore(backend_dir=config.image_backend, frontend_dir=None)
+    builder = build.ImageBuilder(config, store)
+    builder.build()
     sys.exit(0)
 
 

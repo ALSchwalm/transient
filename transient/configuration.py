@@ -57,11 +57,6 @@ class _TransientConfigSchema(Schema):
        the fields during deserialization
     """
 
-    image = fields.List(fields.Str(), missing=[])
-    image_backend = fields.Str(allow_none=True)
-    image_frontend = fields.Str(allow_none=True)
-    name = fields.Str(allow_none=True)
-
     # marshmallow's decorator pre_load() is untyped, forcing
     # remove_unset_options() to be untyped. Therefore, we ignore it to
     # silence the type checker
@@ -87,12 +82,18 @@ class _TransientConfigSchema(Schema):
         return Config(**data)
 
 
-class _TransientDeleteConfigSchema(_TransientConfigSchema):
-    """Defines the schema for the Transient-delete configuration and validates
+class _TransientBuildConfigSchema(_TransientConfigSchema):
+    """Defines the schema for the Transient-build configuration and validates
        the fields during deserialization
     """
 
-    force = fields.Bool(missing=False)
+    image_backend = fields.Str(allow_none=True)
+    name = fields.Str(allow_none=True)
+    qmp_timeout = fields.Int(missing=10, allow_none=True)
+    ssh_timeout = fields.Int(missing=90, allow_none=True)
+    local = fields.Bool(missing=False)
+    file = fields.Str(allow_none=True)
+    build_dir = fields.Str(allow_none=False)
 
 
 class _TransientListConfigSchema(_TransientConfigSchema):
@@ -103,7 +104,18 @@ class _TransientListConfigSchema(_TransientConfigSchema):
        schemas.
     """
 
-    pass
+    image = fields.List(fields.Str(), missing=[])
+    image_frontend = fields.Str(allow_none=True)
+    image_backend = fields.Str(allow_none=True)
+    name = fields.Str(allow_none=True)
+
+
+class _TransientDeleteConfigSchema(_TransientListConfigSchema):
+    """Defines the schema for the Transient-delete configuration and validates
+       the fields during deserialization
+    """
+
+    force = fields.Bool(missing=False)
 
 
 class _TransientRunConfigSchema(_TransientConfigSchema):
@@ -111,6 +123,10 @@ class _TransientRunConfigSchema(_TransientConfigSchema):
        fields during deserialization
     """
 
+    image = fields.List(fields.Str(), missing=[])
+    image_frontend = fields.Str(allow_none=True)
+    image_backend = fields.Str(allow_none=True)
+    name = fields.Str(allow_none=True)
     config = fields.Str(allow_none=True)
     copy_in_before = fields.List(fields.Str(), missing=[])
     copy_out_after = fields.List(fields.Str(), missing=[])
@@ -257,6 +273,15 @@ def _create_transient_config_with_schema(
         raise CLIArgumentError(error)
 
     return validated_config
+
+
+def create_transient_build_config(cli_args: Dict[Any, Any]) -> Config:
+    """Creates and validates the Config to be used by Transient-build given the
+       CLI arguments
+    """
+    schema = _TransientBuildConfigSchema()
+
+    return _create_transient_config_with_schema(cli_args, schema)
 
 
 def create_transient_list_config(cli_args: Dict[Any, Any]) -> Config:

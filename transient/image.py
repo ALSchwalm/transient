@@ -25,31 +25,14 @@ _VM_IMAGE_REGEX = re.compile(r"^[^\-]+-[^\-]+-[^\-]+$")
 _BACKEND_IMAGE_REGEX = re.compile(r"^[^\-]+$")
 
 
-def _storage_safe_encode(name: str) -> str:
+def storage_safe_encode(name: str) -> str:
     # Use URL quote so the names are still somewhat readable in the filesystem, but
     # we can unambiguously get the true name back for display purposes
     return urllib.parse.quote(name, safe="").replace("-", "%2D")
 
 
-def _storage_safe_decode(name: str) -> str:
+def storage_safe_decode(name: str) -> str:
     return urllib.parse.unquote(name)
-
-
-def _prepare_file_operation_bar(filesize: int) -> progressbar.ProgressBar:
-    return progressbar.ProgressBar(
-        maxval=filesize,
-        widgets=[
-            progressbar.Percentage(),
-            " ",
-            progressbar.Bar(),
-            " ",
-            progressbar.FileTransferSpeed(),
-            " | ",
-            progressbar.DataSize(),
-            " | ",
-            progressbar.ETA(),
-        ],
-    )
 
 
 class BaseImageProtocol:
@@ -86,17 +69,6 @@ class BaseImageProtocol:
         self, store: "ImageStore", spec: "ImageSpec", destination: IO[bytes]
     ) -> None:
         raise RuntimeError("Protocol did not implement '_do_retrieve_image'")
-
-    def _copy_with_progress(
-        self, bar: progressbar.ProgressBar, source: IO[bytes], destination: IO[bytes]
-    ) -> None:
-        for idx in itertools.count():
-            block = source.read(_BLOCK_TRANSFER_SIZE)
-            if not block:
-                break
-            destination.write(block)
-            bar.update(idx * _BLOCK_TRANSFER_SIZE)
-        bar.finish()
 
     def __lock_backend_destination(self, dest: str) -> int:
         # By default, python 'open' call will truncate writable files. We can't allow that
@@ -185,7 +157,7 @@ class VagrantImageProtocol(BaseImageProtocol):
         box_file = tempfile.TemporaryFile()
 
         # Do the actual download
-        bar = _prepare_file_operation_bar(total_length)
+        bar = utils.prepare_file_operation_bar(total_length)
         for idx, block in enumerate(stream.iter_content(_BLOCK_TRANSFER_SIZE)):
             box_file.write(block)
             bar.update(idx * _BLOCK_TRANSFER_SIZE)
@@ -204,8 +176,7 @@ class VagrantImageProtocol(BaseImageProtocol):
             in_stream = tar.extractfile(image_info.name)
             assert in_stream is not None
 
-            bar = _prepare_file_operation_bar(image_info.size)
-            self._copy_with_progress(bar, in_stream, destination)
+            utils.copy_with_progress(in_stream, destination, image_info.size)
 
         logging.info("Image extraction completed.")
 
@@ -229,8 +200,9 @@ class FrontendImageProtocol(BaseImageProtocol):
             raise RuntimeError(f"Ambiguous backend image '{source}' for VM '{vm_name}'")
         frontend_image = candidates[0]
         with open(frontend_image.path, "rb") as existing_file:
-            bar = _prepare_file_operation_bar(frontend_image.actual_size)
-            self._copy_with_progress(bar, existing_file, destination)
+            utils.copy_with_progress(
+                existing_file, destination, frontend_image.actual_size
+            )
 
         logging.info("Image copy complete.")
 
@@ -253,7 +225,7 @@ class HttpImageProtocol(BaseImageProtocol):
         if "content-length" in stream.headers:
             total_length = int(stream.headers["content-length"])
 
-        bar = _prepare_file_operation_bar(total_length)
+        bar = utils.prepare_file_operation_bar(total_length)
         for idx, block in enumerate(stream.iter_content(_BLOCK_TRANSFER_SIZE)):
             destination.write(block)
             bar.update(idx * _BLOCK_TRANSFER_SIZE)
@@ -304,9 +276,10 @@ class BaseImageInfo:
     image_info: Dict[str, Any]
 
     def __init__(self, store: "ImageStore", path: str) -> None:
-        stdout = subprocess.check_output(
+        stdout = utils.run_check_retcode(
             [store.qemu_img_bin, "info", "-U", "--output=json", path]
         )
+        assert stdout is not None
         self.image_info = json.loads(stdout)
         self.store = store
         self.virtual_size = self.image_info["virtual-size"]
@@ -321,7 +294,7 @@ class BackendImageInfo(BaseImageInfo):
 
     def __init__(self, store: "ImageStore", path: str) -> None:
         super().__init__(store, path)
-        self.identifier = _storage_safe_decode(self.filename)
+        self.identifier = storage_safe_decode(self.filename)
 
 
 class FrontendImageInfo(BaseImageInfo):
@@ -332,7 +305,7 @@ class FrontendImageInfo(BaseImageInfo):
     def __init__(self, store: "ImageStore", path: str):
         super().__init__(store, path)
         vm_name, number, image = self.filename.split("-")
-        self.vm_name = _storage_safe_decode(vm_name)
+        self.vm_name = storage_safe_decode(vm_name)
         self.disk_number = int(number)
         backend_path = self.image_info["full-backing-filename"]
         try:
@@ -466,7 +439,7 @@ class ImageStore:
             raise RuntimeError(f"Invalid image file name: '{filename}'")
 
     def backend_path(self, spec: ImageSpec) -> str:
-        safe_name = _storage_safe_encode(spec.name)
+        safe_name = storage_safe_encode(spec.name)
         return os.path.join(self.backend, safe_name)
 
     def retrieve_image(self, image_spec: str) -> BackendImageInfo:
@@ -488,8 +461,8 @@ class ImageStore:
         self, image_spec: str, vm_name: str, num: int
     ) -> FrontendImageInfo:
         backing_image = self.retrieve_image(image_spec)
-        safe_vmname = _storage_safe_encode(vm_name)
-        safe_image_identifier = _storage_safe_encode(backing_image.identifier)
+        safe_vmname = storage_safe_encode(vm_name)
+        safe_image_identifier = storage_safe_encode(backing_image.identifier)
         new_image_path = os.path.join(
             self.frontend, f"{safe_vmname}-{num}-{safe_image_identifier}"
         )
@@ -502,7 +475,7 @@ class ImageStore:
             f"Creating VM Image '{new_image_path}' from backing image '{backing_image.path}'"
         )
 
-        subprocess.check_output(
+        utils.run_check_retcode(
             [
                 self.qemu_img_bin,
                 "create",
@@ -527,7 +500,7 @@ class ImageStore:
                 continue
             try:
                 image_info = FrontendImageInfo(self, path)
-            except subprocess.CalledProcessError:
+            except utils.TransientProcessError:
                 # If the path doesn't exist anymore, then we raced with something
                 # that deleted the file, so just continue
                 if not os.path.exists(path):
@@ -556,7 +529,7 @@ class ImageStore:
                 continue
             try:
                 image_info = BackendImageInfo(self, path)
-            except subprocess.CalledProcessError:
+            except utils.TransientProcessError:
                 if not os.path.exists(path):
                     continue
                 else:

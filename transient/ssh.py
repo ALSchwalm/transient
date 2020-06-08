@@ -15,9 +15,6 @@ SSH_CONNECTION_WAIT_TIME = 30
 SSH_CONNECTION_TIME_BETWEEN_TRIES = 2
 SSH_DEFAULT_CONNECT_TIMEOUT = 3
 
-# From the typeshed Popen definitions
-_FILE = Union[None, int, IO[Any]]
-
 
 class SshConfig:
     host: str
@@ -30,8 +27,8 @@ class SshConfig:
     def __init__(
         self,
         host: str,
-        port: Optional[int],
-        ssh_bin_name: Optional[str],
+        port: Optional[int] = None,
+        ssh_bin_name: Optional[str] = None,
         user: Optional[str] = None,
         password: Optional[str] = None,
         args: Optional[List[str]] = None,
@@ -79,15 +76,6 @@ class SshClient:
         self.config = config
         self.command = command
 
-    def __prepare_builtin_keys(self) -> List[str]:
-        home = utils.transient_data_home()
-        key_destination = os.path.join(home, "vagrant.key")
-        if os.path.exists(key_destination):
-            return [key_destination]
-
-        utils.extract_static_file("vagrant.priv", key_destination)
-        return [key_destination]
-
     def __prepare_ssh_command(self, user_cmd: Optional[str] = None) -> List[str]:
         if self.config.user is not None:
             host = f"{self.config.user}@{self.config.host}"
@@ -96,7 +84,7 @@ class SshClient:
 
         args = self.config.args + ["-p", str(self.config.port)]
 
-        priv_keys = self.__prepare_builtin_keys()
+        priv_keys = _prepare_builtin_keys()
         for key in priv_keys:
             args.extend(["-i", key])
 
@@ -109,9 +97,9 @@ class SshClient:
     def __timed_connection(
         self,
         timeout: int,
-        ssh_stdin: Optional[_FILE] = None,
-        ssh_stdout: Optional[_FILE] = None,
-        ssh_stderr: Optional[_FILE] = None,
+        ssh_stdin: Optional[utils.FILE_TYPE] = None,
+        ssh_stdout: Optional[utils.FILE_TYPE] = None,
+        ssh_stderr: Optional[utils.FILE_TYPE] = None,
     ) -> "subprocess.Popen[bytes]":
         probe_command = self.__prepare_ssh_command()
         real_command = self.__prepare_ssh_command(self.command)
@@ -185,3 +173,49 @@ class SshClient:
             ssh_stdout=subprocess.PIPE,
             ssh_stderr=subprocess.PIPE,
         )
+
+    def connect(
+        self,
+        timeout: int,
+        stdin: Union[None, int, IO[Any]],
+        stdout: Union[None, int, IO[Any]],
+        stderr: Union[None, int, IO[Any]],
+    ) -> "subprocess.Popen[bytes]":
+        return self.__timed_connection(timeout, stdin, stdout, stderr)
+
+
+def _prepare_builtin_keys() -> List[str]:
+    home = utils.transient_data_home()
+    builtins = {
+        "vagrant.priv": os.path.join(home, "vagrant.key"),
+        "transient.priv": os.path.join(home, "transient.key"),
+    }
+    for name, destination in builtins.items():
+        if os.path.exists(destination):
+            continue
+
+        utils.extract_static_file(name, destination)
+    return list(builtins.values())
+
+
+def scp(
+    source: str, destination: str, config: SshConfig, copy_from: bool = False
+) -> None:
+    keys = _prepare_builtin_keys()
+    if config.user is not None:
+        host = f"{config.user}@{config.host}"
+    else:
+        host = f"{config.host}"
+
+    args = ["-p", "-r", "-P", str(config.port), *config.args]
+
+    priv_keys = _prepare_builtin_keys()
+    for key in priv_keys:
+        args.extend(["-i", key])
+
+    if copy_from is False:
+        host += f":{destination}"
+        utils.run_check_retcode(["scp", *args, source, host])
+    else:
+        host += f":{source}"
+        utils.run_check_retcode(["scp", *args, host, destination])

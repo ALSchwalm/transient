@@ -201,6 +201,26 @@ class QemuRunner:
 
         return self.proc_handle
 
+    def shutdown(self, timeout: Optional[int] = None) -> int:
+        if self.qmp_client is None:
+            raise RuntimeError(
+                "Qemu 'shutdown' can only be called when 'qmp_connectable=True'"
+            )
+
+        if self.proc_handle is None:
+            raise RuntimeError("QemuRunner cannot shutdown without being started")
+
+        def qemu_guest_shutdown(event: QmpMessage) -> None:
+            logging.info(f"QEMU guest has shutdown. QMP event: {event}")
+
+        # If we get a guest SHUTDOWN signal, invoke a callback to log it
+        self.qmp_client.register_callback("SHUTDOWN", qemu_guest_shutdown)
+
+        # Now actually request that the guest shutdown via ACPI
+        self.qmp_client.send_sync({"execute": "system_powerdown"})
+
+        return self.proc_handle.wait(timeout)
+
     def wait(self, timeout: Optional[int] = None) -> int:
         if self.proc_handle is None:
             raise RuntimeError("QemuRunner cannot wait without being started")

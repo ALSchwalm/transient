@@ -28,13 +28,6 @@ else:
     Environ = os._Environ
 
 
-class TransientProcessError(Exception):
-    returncode: int
-
-    def __init__(self, returncode: int):
-        self.returncode = returncode
-
-
 @enum.unique
 class TransientVmState(enum.Enum):
     WAITING = (1,)
@@ -118,6 +111,10 @@ class TransientVm:
             with utils.package_file_path(
                 "transient-kernel"
             ) as kernel, tempfile.TemporaryDirectory() as modules:
+                # libguestfs expects a modules.dep in the modules directory (but
+                # it can be empty)
+                open(os.path.join(modules, "modules.dep"), "w+")
+
                 env["SUPERMIN_MODULES"] = modules
                 env["SUPERMIN_KERNEL"] = str(kernel)
                 yield env
@@ -271,9 +268,6 @@ class TransientVm:
     def __current_user(self) -> str:
         return pwd.getpwuid(os.getuid()).pw_name
 
-    def __qemu_guest_shutdown(self, event: qemu.QmpMessage) -> None:
-        logging.info(f"QEMU guest has shutdown. QMP event: {event}")
-
     def __qemu_sigchld_handler(self, sig: int, frame: Any) -> None:
         # We register this signal handler after the QEMU start, so these must not be None
         assert self.qemu_runner is not None
@@ -333,7 +327,7 @@ class TransientVm:
 
         if returncode != 0:
             logging.debug(f"VM exited with non-zero code: {returncode}")
-            raise TransientProcessError(returncode)
+            raise utils.TransientProcessError(returncode=returncode)
         return None
 
     def run(self) -> None:
@@ -409,17 +403,9 @@ class TransientVm:
             # SIGCHLD exit.
             self.qemu_should_die = True
 
-            # If we get a guest SHUTDOWN signal, invoke a callback to log it
-            self.qemu_runner.qmp_client.register_callback(
-                "SHUTDOWN", self.__qemu_guest_shutdown
-            )
-
-            # Now actually request that the guest shutdown via ACPI
-            self.qemu_runner.qmp_client.send_sync({"execute": "system_powerdown"})
-
             try:
                 # Wait a bit for the guest to finish the shutdown and QEMU to exit
-                self.qemu_runner.wait(timeout=self.config.shutdown_timeout)
+                self.qemu_runner.shutdown(timeout=self.config.shutdown_timeout)
 
             except subprocess.TimeoutExpired:
                 # if the timeout == 0, then the user expects the guest to not actually

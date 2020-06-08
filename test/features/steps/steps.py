@@ -28,6 +28,7 @@ def build_command(context):
 
 def run_vm(context):
     command = build_command(context)
+    print(command)
     handle = subprocess.Popen(
         command, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE
     )
@@ -35,10 +36,14 @@ def run_vm(context):
     return context.handle
 
 
-def wait_on_vm(context, timeout=VM_WAIT_TIME):
-    context.handle.wait(timeout)
-    context.stdout = context.handle.stdout.read().decode("utf-8")
-    context.stderr = context.handle.stderr.read().decode("utf-8")
+def wait_on_vm(context):
+    if hasattr(context, "wait_time"):
+        timeout = context.wait_time
+    else:
+        timeout = VM_WAIT_TIME
+    stdout, stderr = context.handle.communicate(timeout=timeout)
+    context.stdout = stdout.decode("utf-8")
+    context.stderr = stderr.decode("utf-8")
 
 
 @given("a transient vm")
@@ -61,9 +66,32 @@ def step_impl(context):
     }
 
 
+@given("a transient build command")
+def step_impl(context):
+    # Build commands can take a _long_ time (when we don't have KVM), so wait
+    # a while for them to finish
+    context.wait_time = VM_WAIT_TIME * 3
+    context.vm_config = {
+        "command": "build",
+        "transient-early-args": [],
+        "transient-args": [],
+        "qemu-args": [],
+    }
+
+
 @given('a name "{name}"')
 def step_impl(context, name):
     context.vm_config["transient-args"].extend(["-name", name])
+
+
+@given('an imagefile "{imagefile}"')
+def step_impl(context, imagefile):
+    context.vm_config["transient-args"].extend(["-file", imagefile])
+
+
+@given('a build directory "{builddir}"')
+def step_impl(context, builddir):
+    context.vm_config["transient-args"].append(builddir)
 
 
 @given('a disk image "{image}"')
@@ -182,7 +210,7 @@ def step_impl(context):
 def step_impl(context):
     text = context.text + "\n"
     context.handle.stdin.write(text.encode("utf-8"))
-    context.handle.stdin.close()
+    context.handle.stdin.flush()
 
 
 @when("we wait for the vm to exit")
