@@ -62,7 +62,9 @@ class BaseImageProtocol:
     def retrieve_image(
         self, store: "ImageStore", spec: "ImageSpec", destination: str
     ) -> None:
-        temp_destination = destination + ".part"
+        # Do partial downloads into the working directory in the backend
+        dest_name = os.path.basename(destination)
+        temp_destination = os.path.join(store.working, dest_name)
         fd = self.__lock_backend_destination(temp_destination)
 
         # We now hold the lock. Either another process started the retrieval
@@ -409,6 +411,7 @@ def format_image_table(
 class ImageStore:
     backend: str
     frontend: str
+    working: str
     qemu_img_bin: str
 
     def __init__(
@@ -417,6 +420,7 @@ class ImageStore:
 
         self.backend = os.path.abspath(backend_dir or self.__default_backend_dir())
         self.frontend = os.path.abspath(frontend_dir or self.__default_frontend_dir())
+        self.working = self.__working_dir()
         self.qemu_img_bin = self.__default_qemu_img_bin()
 
         if not os.path.exists(self.backend):
@@ -426,6 +430,14 @@ class ImageStore:
         if not os.path.exists(self.frontend):
             logging.debug(f"Creating missing ImageStore frontend at '{self.frontend}'")
             os.makedirs(self.frontend, exist_ok=True)
+
+        if not os.path.exists(self.working):
+            os.makedirs(self.working, exist_ok=True)
+
+    def __working_dir(self) -> str:
+        # Note that the working directory must be in the same filesystem as
+        # the backend, to allow atomic movement of files.
+        return os.path.join(self.backend, ".working")
 
     def __default_backend_dir(self) -> str:
         env_specified = os.getenv("TRANSIENT_BACKEND")
@@ -453,10 +465,13 @@ class ImageStore:
         else:
             raise RuntimeError(f"Invalid image file name: '{filename}'")
 
-    def retrieve_image(self, image_spec: str, vm_name: str) -> BackendImageInfo:
-        spec = ImageSpec(image_spec)
+    def backend_path(self, spec: ImageSpec) -> str:
         safe_name = _storage_safe_encode(spec.name)
-        destination = os.path.join(self.backend, safe_name)
+        return os.path.join(self.backend, safe_name)
+
+    def retrieve_image(self, image_spec: str) -> BackendImageInfo:
+        spec = ImageSpec(image_spec)
+        destination = self.backend_path(spec)
 
         if os.path.exists(destination):
             logging.info(f"Image '{spec.name}' already exists. Skipping retrieval")
@@ -472,7 +487,7 @@ class ImageStore:
     def create_vm_image(
         self, image_spec: str, vm_name: str, num: int
     ) -> FrontendImageInfo:
-        backing_image = self.retrieve_image(image_spec, vm_name)
+        backing_image = self.retrieve_image(image_spec)
         safe_vmname = _storage_safe_encode(vm_name)
         safe_image_identifier = _storage_safe_encode(backing_image.identifier)
         new_image_path = os.path.join(
@@ -507,9 +522,9 @@ class ImageStore:
     ) -> List[FrontendImageInfo]:
         images = []
         for candidate in os.listdir(self.frontend):
-            if not _VM_IMAGE_REGEX.match(candidate):
-                continue
             path = os.path.join(self.frontend, candidate)
+            if not os.path.isfile(path) or not _VM_IMAGE_REGEX.match(candidate):
+                continue
             try:
                 image_info = FrontendImageInfo(self, path)
             except subprocess.CalledProcessError:
@@ -536,9 +551,9 @@ class ImageStore:
     ) -> List[BackendImageInfo]:
         images = []
         for candidate in os.listdir(self.backend):
-            if not _BACKEND_IMAGE_REGEX.match(candidate):
-                continue
             path = os.path.join(self.backend, candidate)
+            if not os.path.isfile(path) or not _BACKEND_IMAGE_REGEX.match(candidate):
+                continue
             try:
                 image_info = BackendImageInfo(self, path)
             except subprocess.CalledProcessError:
