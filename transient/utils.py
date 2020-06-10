@@ -1,20 +1,17 @@
 import distutils.util
 import logging
 import os
+import pathlib
 import socket
 import tempfile
 
 try:
     import importlib.resources as pkg_resources
-
-    package_read_bytes = pkg_resources.read_binary
 except ImportError:
     # Try backported to PY<37 `importlib_resources`.
     import importlib_resources as pkg_resources  # type: ignore
 
-    package_read_bytes = pkg_resources.read_binary
-
-from typing import cast, Optional
+from typing import cast, Optional, ContextManager
 from . import static
 
 
@@ -81,8 +78,16 @@ def transient_data_home() -> str:
     return os.path.join(xdg_data_home(), "transient")
 
 
+def package_file_path(key: str) -> ContextManager[pathlib.Path]:
+    return pkg_resources.path(static, key)
+
+
+def package_file_bytes(key: str) -> bytes:
+    return pkg_resources.read_binary(static, key)
+
+
 def extract_static_file(key: str, destination: str) -> None:
-    static_file = package_read_bytes(static, key)
+    static_file = package_file_bytes(key)
 
     # Set delete=False because we will be moving the file
     with tempfile.NamedTemporaryFile(dir=os.path.dirname(destination), delete=False) as f:

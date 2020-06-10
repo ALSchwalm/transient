@@ -6,6 +6,7 @@ from . import ssh
 from . import sshfs
 from . import static
 
+import contextlib
 import enum
 import glob
 import logging
@@ -13,9 +14,10 @@ import os
 import pwd
 import signal
 import subprocess
+import tempfile
 import uuid
 
-from typing import cast, Optional, List, Any, Union, Tuple, TYPE_CHECKING
+from typing import cast, Iterator, Optional, List, Dict, Any, Union, Tuple, TYPE_CHECKING
 
 # _Environ is declared as generic in stubs but not at runtime. This makes it
 # non-subscriptable and will result in a runtime error. According to the
@@ -94,38 +96,10 @@ class TransientVm:
         logging.debug(f"No readable kernels found")
         return False
 
-    def __extract_libguestfs_kernel(self) -> Tuple[str, str]:
-        """Extract the transient kernel and modules"""
-        home = utils.transient_data_home()
-        kernel_destination = os.path.join(home, "transient-kernel")
-        modules_destination = os.path.join(home, "transient-modules")
-        modules_dep = os.path.join(modules_destination, "modules.dep")
-        if os.path.exists(kernel_destination) and os.path.exists(modules_dep):
-            logging.debug(f"Transient kernel and modules already extracted. Skipping")
-            return kernel_destination, modules_destination
-
-        logging.info(f"Extracting transient kernel to {kernel_destination}")
-        utils.extract_static_file("transient-kernel", kernel_destination)
-
-        logging.info(f"Extracting transient modules to {modules_destination}")
-        # Our kernel doesn't actually use modules, but libguestfs expects _some_
-        # sort of modules directory, so just make an empty one
-        os.makedirs(modules_destination)
-        with open(modules_dep, "wb+") as f:
-            pass
-        return kernel_destination, modules_destination
-
-    def __prepare_libguestfs_environment(self) -> Environ:
+    @contextlib.contextmanager
+    def __libguestfs_environment(self) -> Iterator[Environ]:
         """Configures an environment for running libguestfs commands"""
         env = os.environ
-
-        # On platforms that don't have an available kernel or the kernel is
-        # not readable (e.g., docker and ubuntu), use ours.
-        if not self.__has_readable_kernel():
-            logging.info(f"No readable kernel detected. Extracting transient kernel")
-            kernel, modules = self.__extract_libguestfs_kernel()
-            env["SUPERMIN_MODULES"] = modules
-            env["SUPERMIN_KERNEL"] = kernel
 
         # Avoid using libvirt explicitly
         env["LIBGUESTFS_BACKEND"] = "direct"
@@ -133,7 +107,22 @@ class TransientVm:
         # And do verbose logging so we can debug failures
         env["LIBGUESTFS_TRACE"] = "1"
         env["LIBGUESTFS_DEBUG"] = "1"
-        return env
+
+        # On platforms that don't have an available kernel or the kernel is
+        # not readable (e.g., docker and ubuntu), use ours.
+        if not self.__has_readable_kernel():
+            logging.info(f"No readable kernel detected. Using transient kernel")
+
+            # We only actually need a temporary directory for modules to satisfy
+            # libguestfs, so make one here.
+            with utils.package_file_path(
+                "transient-kernel"
+            ) as kernel, tempfile.TemporaryDirectory() as modules:
+                env["SUPERMIN_MODULES"] = modules
+                env["SUPERMIN_KERNEL"] = str(kernel)
+                yield env
+        else:
+            yield env
 
     def __do_copy_command(self, cmd: List[str], environment: Environ) -> None:
         cmd_name = cmd[0]
@@ -185,16 +174,16 @@ class TransientVm:
         if not vm_absolute_path.startswith("/"):
             raise RuntimeError(f"Absolute path for guest required: {vm_absolute_path}")
 
-        environment = self.__prepare_libguestfs_environment()
-        for vm_image in self.vm_images:
-            assert vm_image.backend is not None
-            logging.info(
-                f"Copying from '{host_path}' to '{vm_image.backend.identifier}:{vm_absolute_path}'"
-            )
-            self.__do_copy_command(
-                ["virt-copy-in", "-a", vm_image.path, host_path, vm_absolute_path],
-                environment,
-            )
+        with self.__libguestfs_environment() as environment:
+            for vm_image in self.vm_images:
+                assert vm_image.backend is not None
+                logging.info(
+                    f"Copying from '{host_path}' to '{vm_image.backend.identifier}:{vm_absolute_path}'"
+                )
+                self.__do_copy_command(
+                    ["virt-copy-in", "-a", vm_image.path, host_path, vm_absolute_path],
+                    environment,
+                )
 
     def __needs_to_copy_out_files_after_running(self) -> bool:
         """Checks if at least one directory on the VM needs to be copied out
@@ -224,16 +213,16 @@ class TransientVm:
         if not vm_absolute_path.startswith("/"):
             raise RuntimeError(f"Absolute path for guest required: {vm_absolute_path}")
 
-        environment = self.__prepare_libguestfs_environment()
-        for vm_image in self.vm_images:
-            assert vm_image.backend is not None
-            logging.info(
-                f"Copying from '{vm_image.backend.identifier}:{vm_absolute_path}' to '{host_path}'"
-            )
-            self.__do_copy_command(
-                ["virt-copy-out", "-a", vm_image.path, vm_absolute_path, host_path,],
-                environment,
-            )
+        with self.__libguestfs_environment() as environment:
+            for vm_image in self.vm_images:
+                assert vm_image.backend is not None
+                logging.info(
+                    f"Copying from '{vm_image.backend.identifier}:{vm_absolute_path}' to '{host_path}'"
+                )
+                self.__do_copy_command(
+                    ["virt-copy-out", "-a", vm_image.path, vm_absolute_path, host_path,],
+                    environment,
+                )
 
     def __qemu_added_args(self) -> List[str]:
         new_args = ["-name", self.name]
