@@ -5,6 +5,7 @@ import fcntl
 import itertools
 import os
 import progressbar  # type: ignore
+from progressbar import ProgressBar
 import re
 import requests
 import subprocess
@@ -25,6 +26,32 @@ _VM_IMAGE_REGEX = re.compile(r"^[^\-]+-[^\-]+-[^\-]+$")
 _BACKEND_IMAGE_REGEX = re.compile(r"^[^\-]+$")
 
 
+class ProgressBarMultiple(ProgressBar):  # type: ignore
+    def __init__(self, multiple: int = 1, **kwargs: Any) -> None:
+        self.multiple = multiple
+        super().__init__(**kwargs)
+
+    def _needs_update(self) -> bool:
+        "Returns whether the ProgressBar should redraw the line."
+
+        if round(self.value / self.max_value * 100) % self.multiple != 0:
+            return False
+
+        return bool(super()._needs_update())
+
+
+class Percentage(progressbar.widgets.Percentage):  # type: ignore
+    """Displays the current percentage as a number with a percent sign."""
+
+    def __init__(self, **kwargs: str) -> None:
+        super().__init__(**kwargs)
+
+    def __call__(
+        self, progress: Any, data: Dict[Any, Any], format: Optional[str] = None
+    ) -> str:
+        return str(progressbar.widgets.FormatWidgetMixin.__call__(self, progress, data))
+
+
 def _storage_safe_encode(name: str) -> str:
     # Use URL quote so the names are still somewhat readable in the filesystem, but
     # we can unambiguously get the true name back for display purposes
@@ -36,20 +63,23 @@ def _storage_safe_decode(name: str) -> str:
 
 
 def _prepare_file_operation_bar(filesize: int) -> progressbar.ProgressBar:
-    return progressbar.ProgressBar(
-        maxval=filesize,
-        widgets=[
-            progressbar.Percentage(),
-            " ",
-            progressbar.Bar(),
-            " ",
-            progressbar.FileTransferSpeed(),
-            " | ",
-            progressbar.DataSize(),
-            " | ",
-            progressbar.ETA(),
-        ],
-    )
+    if sys.stdout.isatty():
+        return progressbar.ProgressBar(
+            maxval=filesize,
+            widgets=[
+                progressbar.Percentage(),
+                " ",
+                progressbar.Bar(),
+                " ",
+                progressbar.FileTransferSpeed(),
+                " | ",
+                progressbar.DataSize(),
+                " | ",
+                progressbar.ETA(),
+            ],
+        )
+
+    return ProgressBarMultiple(maxval=filesize, multiple=5, widgets=[Percentage(),],)
 
 
 class BaseImageProtocol:
@@ -170,7 +200,7 @@ class VagrantImageProtocol(BaseImageProtocol):
 
         box_url = self.__vagrant_box_url(version, box_info)
 
-        print(f"Pulling from vagranthub: {box_name}:{version}")
+        print(f"Pulling from vagranthub: {box_name}:{version}", flush=True)
 
         stream = requests.get(box_url, allow_redirects=True, stream=True)
         logging.debug(f"Response headers: {stream.headers}")
@@ -191,7 +221,7 @@ class VagrantImageProtocol(BaseImageProtocol):
         box_file.flush()
         box_file.seek(0)
 
-        print("Download completed. Starting image extraction.")
+        print("Download completed. Starting image extraction.", flush=True)
 
         # libvirt boxes _should_ just be tar.gz files with a box.img file, but some
         # images put these in subdirectories. Try to detect that.
@@ -205,6 +235,7 @@ class VagrantImageProtocol(BaseImageProtocol):
             bar = _prepare_file_operation_bar(image_info.size)
             self._copy_with_progress(bar, in_stream, destination)
 
+        print("Image extraction completed.", flush=True)
         logging.info("Image extraction completed.")
 
 
@@ -217,7 +248,10 @@ class FrontendImageProtocol(BaseImageProtocol):
     ) -> None:
         vm_name, source = spec.source.split("@", 1)
 
-        print(f"Copying image '{source}' for VM '{vm_name}' as new backend '{spec.name}'")
+        print(
+            f"Copying image '{source}' for VM '{vm_name}' as new backend '{spec.name}'",
+            flush=True,
+        )
 
         candidates = store.frontend_image_list(vm_name, source)
         if len(candidates) == 0:
@@ -230,6 +264,7 @@ class FrontendImageProtocol(BaseImageProtocol):
             bar = _prepare_file_operation_bar(frontend_image.actual_size)
             self._copy_with_progress(bar, existing_file, destination)
 
+        print("Image copy complete.", flush=True)
         logging.info("Image copy complete.")
 
 
