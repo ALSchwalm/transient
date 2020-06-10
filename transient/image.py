@@ -12,18 +12,25 @@ import subprocess
 import tarfile
 import tempfile
 import urllib.parse
+import sys
+import magic  # type: ignore
 
 from . import utils
 from typing import cast, Optional, List, Dict, Any, Union, Tuple, IO, Pattern
 
-
 _BLOCK_TRANSFER_SIZE = 64 * 1024  # 64KiB
 
-# vm_name-disk_number-image_name-image_version
-_VM_IMAGE_REGEX = re.compile(r"^[^\-]+-[^\-]+-[^\-]+$")
+# vm_name-disk_number-image_name_and_version
+_VM_IMAGE_REGEX = re.compile(r"^[^\-]+-\d+-[^\-]+$")
 
 # image_name-image_version
 _BACKEND_IMAGE_REGEX = re.compile(r"^[^\-]+$")
+
+
+def file_is_qcow2_image(file_name: str) -> bool:
+    if os.path.isfile(file_name) and "QEMU QCOW2 Image" in magic.from_file(file_name):
+        return True
+    return False
 
 
 class ProgressBarMultiple(ProgressBar):  # type: ignore
@@ -390,7 +397,10 @@ def format_frontend_image_table(
         "Real Size",
         "Virt Size",
     ]
-    table.set_style(beautifultable.BeautifulTable.STYLE_BOX)
+    if sys.stdout.isatty():
+        table.set_style(beautifultable.BeautifulTable.STYLE_BOX)
+    else:
+        table.set_style(beautifultable.BeautifulTable.STYLE_NONE)
     table.column_alignments["VM Name"] = beautifultable.BeautifulTable.ALIGN_LEFT
     table.column_alignments["Backend Image"] = beautifultable.BeautifulTable.ALIGN_LEFT
     table.column_alignments["Disk Num"] = beautifultable.BeautifulTable.ALIGN_RIGHT
@@ -418,7 +428,10 @@ def format_backend_image_table(
 ) -> beautifultable.BeautifulTable:
     table = beautifultable.BeautifulTable()
     table.column_headers = ["Image Name", "Real Size", "Virt Size"]
-    table.set_style(beautifultable.BeautifulTable.STYLE_BOX)
+    if sys.stdout.isatty():
+        table.set_style(beautifultable.BeautifulTable.STYLE_BOX)
+    else:
+        table.set_style(beautifultable.BeautifulTable.STYLE_NONE)
     table.column_alignments["Image Name"] = beautifultable.BeautifulTable.ALIGN_LEFT
     table.column_alignments["Real Size"] = beautifultable.BeautifulTable.ALIGN_RIGHT
     table.column_alignments["Virt Size"] = beautifultable.BeautifulTable.ALIGN_RIGHT
@@ -542,9 +555,9 @@ class ImageStore:
     ) -> List[FrontendImageInfo]:
         images = []
         for candidate in os.listdir(self.frontend):
-            if not _VM_IMAGE_REGEX.match(candidate):
-                continue
             path = os.path.join(self.frontend, candidate)
+            if not _VM_IMAGE_REGEX.match(candidate) or not file_is_qcow2_image(path):
+                continue
             try:
                 image_info = FrontendImageInfo(self, path)
             except subprocess.CalledProcessError:
@@ -571,9 +584,9 @@ class ImageStore:
     ) -> List[BackendImageInfo]:
         images = []
         for candidate in os.listdir(self.backend):
-            if not _BACKEND_IMAGE_REGEX.match(candidate):
-                continue
             path = os.path.join(self.backend, candidate)
+            if not _BACKEND_IMAGE_REGEX.match(candidate) or not file_is_qcow2_image(path):
+                continue
             try:
                 image_info = BackendImageInfo(self, path)
             except subprocess.CalledProcessError:

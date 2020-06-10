@@ -240,8 +240,7 @@ def list_impl(**kwargs: Any) -> None:
     images = _find_requested_images(store, args)
 
     if len(images) == 0:
-        print("No images match selection", file=sys.stderr)
-        sys.exit(1)
+        sys.exit(0)
 
     frontend, backend = image.format_image_table(images)
     if len(frontend) > 0:
@@ -257,6 +256,7 @@ def _find_requested_images(
     store: image.ImageStore, args: argparse.Namespace
 ) -> List[image.BaseImageInfo]:
     images: List[image.BaseImageInfo] = []
+
     if args.name is not None:
         if len(args.image) == 0:
             images = list(store.frontend_image_list(args.name))

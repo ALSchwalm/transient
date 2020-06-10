@@ -31,6 +31,7 @@ def run_vm(context):
     handle = subprocess.Popen(
         command, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE
     )
+    context.command_ran = " ".join(command)
     context.handle = handle
     return context.handle
 
@@ -191,6 +192,7 @@ def step_impl(context, code):
         print(context.stdout)
         print("command stderr:")
         print(context.stderr)
+    print(f"Command run was {context.command_ran}")
     assert_that(context.handle.returncode, equal_to(int(code)))
 
 
