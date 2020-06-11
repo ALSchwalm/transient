@@ -178,7 +178,7 @@ class QemuRunner:
 
     def start(self) -> "subprocess.Popen[bytes]":
         logging.info(
-            f"Starting qemu process '{self.bin_name}' with arguments '{self.args}'"
+            f"Starting qemu process: {self.bin_name} {self.args}"
         )
 
         # By default, perform no redirection
