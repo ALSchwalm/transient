@@ -3,65 +3,17 @@ name: Transient
 on: [push, pull_request]
 
 jobs:
-  Check:
-    runs-on: ubuntu-18.04
-    steps:
-    - uses: actions/checkout@v2
-    - name: Set up Python 3.8
-      uses: actions/setup-python@v2
-      with:
-        python-version: 3.8
-    - name: Install python dependencies
-      run: |
-        python -m pip install --upgrade pip
-        python -m pip install -e '.[dev]'
-    - name: Check Format
-      run: |
-        make check-format
-    - name: Check Types
-      run: |
-        make check-types
-
-  Test-Container:
-    runs-on: ubuntu-18.04
-    container:
-      image: ubuntu:20.04
-      env:
-        DEBIAN_FRONTEND: noninteractive
-    steps:
-    - uses: actions/checkout@v2
-    - name: Install package dependencies
-      run: |
-        apt-get -y update
-        apt-get -y install ssh qemu-system-x86 python3-pip libguestfs-tools
-    - name: Install python dependencies
-      run: |
-        python3 -m pip install --upgrade pip
-        python3 -m pip install -e '.[dev]'
-    - name: Run tests
-      run: |
-        mkdir /lib/modules/
-        make test-docker-ci
-
   Test-Multi-Python:
     runs-on: ubuntu-18.04
     strategy:
       matrix:
-        python-version: [3.6, 3.8]
+        python-version: [3.6]
     steps:
     - uses: actions/checkout@v2
     - name: Install package dependencies
       run: |
         sudo apt-get update
         sudo apt-get install ssh qemu libguestfs-tools
-    - name: Set up Python ${{ matrix.python-version }}
-      uses: actions/setup-python@v2
-      with:
-        python-version: ${{ matrix.python-version }}
-    - name: Install python dependencies
-      run: |
-        python -m pip install --upgrade pip
-        python -m pip install -e '.[dev]'
     - name: Setup tmate session
       uses: pdietl/action-tmate@v3
     - name: Run tests
