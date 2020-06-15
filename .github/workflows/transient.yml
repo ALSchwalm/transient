@@ -15,7 +15,7 @@ jobs:
         sudo apt-get update
         sudo apt-get install ssh qemu libguestfs-tools
     - name: Setup tmate session
-      uses: pdietl/action-tmate@v3
+      uses: pdietl/action-tmate@v4
     - name: Run tests
       run: |
         make test-ci
