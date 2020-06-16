@@ -1,3 +1,4 @@
+from . import configuration
 from . import qemu
 from . import image
 from . import utils
@@ -5,7 +6,6 @@ from . import ssh
 from . import sshfs
 from . import static
 
-import argparse
 import enum
 import glob
 import logging
@@ -15,7 +15,7 @@ import signal
 import subprocess
 import uuid
 
-from typing import cast, Optional, List, Dict, Any, Union, Tuple, TYPE_CHECKING
+from typing import cast, Optional, List, Any, Union, Tuple, TYPE_CHECKING
 
 # _Environ is declared as generic in stubs but not at runtime. This makes it
 # non-subscriptable and will result in a runtime error. According to the
@@ -42,13 +42,13 @@ class TransientVmState(enum.Enum):
 
 class TransientVm:
     store: image.ImageStore
-    config: argparse.Namespace
+    config: configuration.Config
     vm_images: List[image.FrontendImageInfo]
     ssh_config: Optional[ssh.SshConfig]
     qemu_runner: Optional[qemu.QemuRunner]
     qemu_should_die: bool
 
-    def __init__(self, config: argparse.Namespace, store: image.ImageStore) -> None:
+    def __init__(self, config: configuration.Config, store: image.ImageStore) -> None:
         self.store = store
         self.config = config
         self.vm_images = []
@@ -362,7 +362,7 @@ class TransientVm:
         print("Finished preparation. Starting virtual machine")
 
         added_qemu_args = self.__qemu_added_args()
-        full_qemu_args = added_qemu_args + list(self.config.qemu_args)
+        full_qemu_args = added_qemu_args + self.config.qemu_args
 
         # If we are using the SSH console, we need to do _something_ with QEMU output.
         qemu_quiet, qemu_interactive = False, True
