@@ -1,0 +1,65 @@
+# A Transient config file
+
+#
+# Transient arguments are set in a similar manner compared to the command line.
+# A few differences exist:
+#
+#   1. All values are set using an equal sign:
+#
+#          shutdown-timeout = 20
+#
+#
+#   2. Strings are encapsulated with double quotes
+#
+#          name = "vm_name"
+#
+#
+#   3. Flags are set to Booleans:
+#
+#          prepare-only = true
+#          ssh-console = false
+#
+#
+#   4. Lists are encapsulated by square brackets:
+#
+#          shared-folder = [
+#              "/path/on/host:/path/on/guest",
+#              "/path/on/host2:/path/on/guest2"
+#          ]
+#
+
+[transient]
+
+copy-in-before   = []
+copy-out-after   = []
+copy-timeout     = 0
+image            = ["centos/7:2004.01"]
+# image_backend    = None
+# image_frontend   = None
+# name             = None
+prepare-only     = true
+qmp-timeout      = 10
+shared-folder    = []
+shutdown-timeout = 20
+# ssh-bin-name     = None
+# ssh-command      = None
+ssh-console      = false
+ssh-port         = 22
+# ssh-user         = None
+ssh-with-serial  = false
+
+
+#
+# QEMU arguments are set in a similar manner compared to the command line.
+#
+# The only difference is that the QEMU argument string is split by whitespace
+# and encapsulated in a list.
+#
+
+[qemu]
+
+qemu-args = [
+    "-nographic",
+    "-enable-kvm",
+    "-m", "1G"
+]
