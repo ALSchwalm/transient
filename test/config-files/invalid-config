@@ -1,0 +1,5 @@
+[transient]
+ssh-foobar = true
+
+[qemu]
+qemu-args = []

@@ -28,8 +28,10 @@ setup(
         "beautifultable==0.8.0",
         "click==7.1.2",
         "importlib-resources==1.5.0",
+        "marshmallow==3.6.1",
         "progressbar2==3.51.3",
-        "requests==2.23.0"
+        "requests==2.23.0",
+        "toml==0.10.1",
     ],
     extras_require={
         "dev": [

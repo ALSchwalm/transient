@@ -160,6 +160,12 @@ def step_impl(context, flag):
     context.vm_config["qemu-args"].append(flag)
 
 
+@given('the config file "{config_file}"')
+def step_impl(context, config_file):
+    config_file_path = os.path.join("config-files/", config_file)
+    context.vm_config["transient-args"].extend(["-config", config_file_path])
+
+
 @when("the vm runs to completion")
 @when("the transient command is run")
 def step_impl(context):

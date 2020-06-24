@@ -1,0 +1,6 @@
+[transient]
+image = ["generic/alpine38:v3.0.2"]
+prepare-only = true
+
+[qemu]
+qemu-args = []

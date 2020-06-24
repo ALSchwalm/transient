@@ -1,9 +1,9 @@
-import argparse
 import click
 import logging
 import signal
 import sys
 
+from . import configuration
 from . import image
 from . import transient
 from . import utils
@@ -22,13 +22,13 @@ def _get_version(
 
 
 _common_options = [
-    click.option("-image-frontend", help="The location to place per-vm disk images"),
+    click.option("-image-frontend", help="The location to place per-vm disk images",),
     click.option(
         "-image-backend",
         help="The location to place the shared, read-only backing disk images",
     ),
     click.option(
-        "-image", multiple=True, help="Disk image to use (this option can be repeated)"
+        "-image", multiple=True, help="Disk image to use (this option can be repeated)",
     ),
 ]
 
@@ -125,7 +125,7 @@ def cli_entry(verbose: int) -> None:
     help="Copy a file or directory out of the VM after running "
     + "(/absolute/path/on/VM:path/on/host)",
 )
-@click.option("-name", help="Delete images associated with the given vm name")
+@click.option("-name", help="Create a vm with the given name")
 @click.option(
     "-ssh-console",
     "-ssh",
@@ -138,32 +138,31 @@ def cli_entry(verbose: int) -> None:
     is_flag=True,
     help="Show the serial output before SSH connects (implies -ssh)",
 )
-@click.option("-ssh-user", "-u", help="User to pass to SSH", default="vagrant")
-@click.option("-ssh-bin-name", help="SSH binary to use", default="ssh")
+@click.option("-ssh-user", "-u", help="User to pass to SSH")
+@click.option("-ssh-bin-name", help="SSH binary to use")
 @click.option(
-    "-ssh-timeout", default=90, help="Time to wait for SSH connection before failing"
+    "-ssh-timeout", help="Time to wait for SSH connection before failing",
 )
-@click.option("-ssh-port", help="Host port the guest port 22 is connected to")
-@click.option("-ssh-command", "-cmd", help="Run an ssh command instead of a console")
 @click.option(
-    "-shutdown-timeout",
-    default=20,
-    help="The time to wait for shutdown before terminating QEMU",
+    "-ssh-port", help="Host port the guest port 22 is connected to",
+)
+@click.option(
+    "-ssh-command", "-cmd", help="Run an ssh command instead of a console",
+)
+@click.option(
+    "-shutdown-timeout", help="The time to wait for shutdown before terminating QEMU",
 )
 @click.option(
     "-qmp-timeout",
-    default=10,
     help="The time in seconds to wait for the QEMU QMP connection to be established",
 )
 @click.option(
     "-copy-timeout",
-    default=None,
     help="The maximum time to wait for a copy-in-before or copy-out-after operation to complete",
 )
 @click.option(
     "-shared-folder",
     "-s",
-    default=[],
     multiple=True,
     help="Share a host directory with the guest (/path/on/host:/path/on/guest)",
 )
@@ -172,6 +171,7 @@ def cli_entry(verbose: int) -> None:
     is_flag=True,
     help="Only download/create vm disks. Do not start the vm",
 )
+@click.option("-config", "-c", nargs=1, help="Use a configuration file")
 @click.argument("QEMU_ARGS", nargs=-1)
 @cli_entry.command(name="run", cls=TransientRunCommand)
 def run_impl(**kwargs: Any) -> None:
@@ -179,11 +179,19 @@ def run_impl(**kwargs: Any) -> None:
 
     QEMU_ARGS will be passed directly to QEMU.
     """
-    args = argparse.Namespace(**kwargs)
+    try:
+        config = configuration.create_transient_run_config(kwargs)
+    except (
+        configuration.ConfigFileOptionError,
+        configuration.ConfigFileParsingError,
+        configuration.CLIArgumentError,
+    ):
+        sys.exit(1)
+
     store = image.ImageStore(
-        backend_dir=args.image_backend, frontend_dir=args.image_frontend
+        backend_dir=config.image_backend, frontend_dir=config.image_frontend
     )
-    trans = transient.TransientVm(config=args, store=store)
+    trans = transient.TransientVm(config=config, store=store)
 
     try:
         trans.run()
@@ -195,15 +203,21 @@ def run_impl(**kwargs: Any) -> None:
 @click.help_option("-h", "--help")
 @with_common_options
 @click.option("-force", "-f", help="Do not prompt before deletion", is_flag=True)
-@click.option("-name", help="Delete images associated with the given vm name")
+@click.option(
+    "-name", help="Delete images associated with the given vm name",
+)
 @cli_entry.command("delete")
 def delete_impl(**kwargs: Any) -> None:
     """Delete transient disks"""
-    args = argparse.Namespace(**kwargs)
+    try:
+        config = configuration.create_transient_delete_config(kwargs)
+    except configuration.CLIArgumentError:
+        sys.exit(1)
+
     store = image.ImageStore(
-        backend_dir=args.image_backend, frontend_dir=args.image_frontend
+        backend_dir=config.image_backend, frontend_dir=config.image_frontend
     )
-    images = _find_requested_images(store, args)
+    images = _find_requested_images(store, config)
 
     if len(images) == 0:
         print("No images match selection", file=sys.stderr)
@@ -218,7 +232,7 @@ def delete_impl(**kwargs: Any) -> None:
         print("\nBackend Images:")
         print(backend)
 
-    if args.force is False:
+    if config.force is False:
         response = utils.prompt_yes_no("Proceed?", default=False)
     else:
         response = True
@@ -234,15 +248,21 @@ def delete_impl(**kwargs: Any) -> None:
 
 @click.help_option("-h", "--help")
 @with_common_options
-@click.option("-name", help="List disks associated with the given vm name")
+@click.option(
+    "-name", help="List disks associated with the given vm name",
+)
 @cli_entry.command("list")
 def list_impl(**kwargs: Any) -> None:
     """List transient disk information"""
-    args = argparse.Namespace(**kwargs)
+    try:
+        config = configuration.create_transient_list_config(kwargs)
+    except configuration.CLIArgumentError:
+        sys.exit(1)
+
     store = image.ImageStore(
-        backend_dir=args.image_backend, frontend_dir=args.image_frontend
+        backend_dir=config.image_backend, frontend_dir=config.image_frontend
     )
-    images = _find_requested_images(store, args)
+    images = _find_requested_images(store, config)
 
     if len(images) == 0:
         print("No images match selection", file=sys.stderr)
@@ -259,21 +279,21 @@ def list_impl(**kwargs: Any) -> None:
 
 
 def _find_requested_images(
-    store: image.ImageStore, args: argparse.Namespace
+    store: image.ImageStore, config: configuration.Config
 ) -> List[image.BaseImageInfo]:
     images: List[image.BaseImageInfo] = []
-    if args.name is not None:
-        if len(args.image) == 0:
-            images = list(store.frontend_image_list(args.name))
+    if config.name is not None:
+        if len(config.image) == 0:
+            images = list(store.frontend_image_list(config.name))
         else:
-            for image_identifier in args.image:
-                images.extend(store.frontend_image_list(args.name, image_identifier))
+            for image_identifier in config.image:
+                images.extend(store.frontend_image_list(config.name, image_identifier))
     else:
-        if len(args.image) == 0:
+        if len(config.image) == 0:
             images = list(store.backend_image_list())
             images.extend(store.frontend_image_list())
         else:
-            for image_identifier in args.image:
+            for image_identifier in config.image:
                 images.extend(store.backend_image_list(image_identifier))
                 images.extend(
                     store.frontend_image_list(image_identifier=image_identifier)
