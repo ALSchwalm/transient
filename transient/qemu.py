@@ -219,14 +219,17 @@ class QemuRunner:
         # Now actually request that the guest shutdown via ACPI
         self.qmp_client.send_sync({"execute": "system_powerdown"})
 
-        return self.proc_handle.wait(timeout)
+        return self.wait(timeout=timeout)
 
     def wait(self, timeout: Optional[int] = None) -> int:
         if self.proc_handle is None:
             raise RuntimeError("QemuRunner cannot wait without being started")
 
         logging.info("Waiting for qemu process to terminate")
-        self.proc_handle.wait(timeout=timeout)
+
+        # Use 'communicate' instead of wait here to avoid deadlocking
+        self.proc_handle.communicate(timeout=timeout)
+
         return self.proc_handle.returncode
 
     def terminate(self) -> None:

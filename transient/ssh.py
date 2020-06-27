@@ -112,39 +112,35 @@ class SshClient:
             # not connected to the requested pipes. Because stdin is connected to
             # /dev/null the connection will be closed automatically (almost) right
             # after it is established, with return code 0.
-            proc = subprocess.Popen(
+            completed = subprocess.run(
                 probe_command,
                 stdin=subprocess.DEVNULL,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
+                # Wait for quite a while, as slow systems (like qemu with a single
+                # core and no '-enable-kvm') can take a long time
+                timeout=SSH_CONNECTION_WAIT_TIME,
                 # Automatically send SIGTERM to this process when the main Transient
                 # process dies
                 preexec_fn=lambda: linux.set_death_signal(signal.SIGTERM),
             )
 
-            # Wait for quite a while, as slow systems (like qemu with a single
-            # core and no '-enable-kvm') can take a long time
-            returncode = proc.wait(SSH_CONNECTION_WAIT_TIME)
-
             # From the man pages: "ssh exits with the exit status of the
             # remote command or with 255 if an error occurred."
-            if returncode == 255:
-                _, raw_stderr = proc.communicate()
-                stderr = raw_stderr.decode("utf-8").strip()
+            if completed.returncode == 255:
+                stderr = completed.stderr.decode("utf-8").strip()
                 logging.info(f"SSH connection failed: {stderr}")
                 # In many cases, the command will fail quickly. Avoid spamming tries
                 time.sleep(SSH_CONNECTION_TIME_BETWEEN_TRIES)
                 continue
-            elif returncode == 0:
-                # The connection closed with code 0, which should indicate that ssh is
-                # now available in the guest. Now kill this connection and establish
-                # another that's connected to the requested stdout/stderr
-                proc.terminate()
-
+            elif completed.returncode == 0:
                 logging.info(
                     "Connecting to SSH using command '{}'".format(" ".join(real_command))
                 )
 
+                # The connection closed with code 0, which should indicate that ssh is
+                # now available in the guest. Now establish another that's connected
+                # to the requested stdout/stderr
                 proc = subprocess.Popen(
                     real_command,
                     stdin=ssh_stdin,
@@ -157,7 +153,7 @@ class SshClient:
                 # If the process exited within SSH_CONNECTION_WAIT_TIME seconds with
                 # any other return code, that's an exception.
                 raise RuntimeError(
-                    f"ssh connection failed with return code: {returncode}"
+                    f"ssh connection failed with return code: {completed.returncode}"
                 )
         raise RuntimeError(
             f"Failed to connect with command '{probe_command}' after {timeout} seconds"
