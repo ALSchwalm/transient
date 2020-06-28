@@ -8,7 +8,7 @@ Scenario: Invalid config file
      And the config file "invalid-config"
     When the transient command is run
     Then the return code is 1
-     And stderr contains "Invalid option on line"
+     And stderr contains "ssh-foobar"
 
 Scenario: Run VM with a single SSH command
    Given a transient vm

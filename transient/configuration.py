@@ -6,7 +6,7 @@ import toml
 
 from marshmallow import Schema, fields, post_load, pre_load, ValidationError
 
-from typing import Any, Dict, List, MutableMapping
+from typing import Any, Dict, List, MutableMapping, Optional
 
 
 class ConfigFileParsingError(Exception):
@@ -14,7 +14,15 @@ class ConfigFileParsingError(Exception):
        configuration file
     """
 
-    pass
+    inner: toml.TomlDecodeError
+    path: str
+
+    def __init__(self, error: toml.TomlDecodeError, path: str) -> None:
+        self.inner = error
+        self.path = path
+
+    def __str__(self) -> str:
+        return f"Invalid configuration file '{self.path}'\n  {self.inner}"
 
 
 class ConfigFileOptionError(Exception):
@@ -22,14 +30,51 @@ class ConfigFileOptionError(Exception):
        configuration file
     """
 
-    pass
+    inner: ValidationError
+    path: str
+
+    def __init__(self, error: ValidationError, path: str) -> None:
+        self.inner = error
+        self.path = path
+
+    def _line_number_of_option_in_config_file(self, option: str) -> Optional[int]:
+        """Returns the line number where the option is found in the config file
+        """
+        with open(self.path) as config_file:
+            for line_number, line in enumerate(config_file, start=1):
+                if option in line:
+                    return line_number
+
+        return None
+
+    def __str__(self) -> str:
+        msg = f"Invalid configuration file '{self.path}'"
+        for invalid_option, errors in self.inner.normalized_messages().items():  # type: ignore
+            # Revert the option to its preformatted state
+            invalid_option = invalid_option.replace("_", "-")
+            line_number = self._line_number_of_option_in_config_file(invalid_option)
+
+            formatted_errors = " ".join(errors)
+            formatted_line_number = str(line_number) if line_number is not None else ""
+            msg += f"\n  [line {formatted_line_number}]: {invalid_option}: {formatted_errors}"
+        return msg
 
 
 class CLIArgumentError(Exception):
     """Raised when an invalid command line argument is encountered
     """
 
-    pass
+    inner: ValidationError
+
+    def __init__(self, error: ValidationError) -> None:
+        self.inner = error
+
+    def __str__(self) -> str:
+        msg = "Invalid command line:"
+        for arg, errors in self.inner.normalized_messages().items():  # type: ignore
+            errors = " ".join(errors)
+            msg += f"\n  {arg}: {errors}"
+        return msg
 
 
 class Config(Dict[Any, Any]):
@@ -154,40 +199,6 @@ def _option_was_set_in_cli(option: Any) -> bool:
     return True
 
 
-def _get_line_number_of_option_in_config_file(option: str, config_file_path: str) -> int:
-    """Returns the line number where the option is found in the config file
-    """
-    with open(config_file_path) as config_file:
-        for line_number, line in enumerate(config_file, start=1):
-            if option in line:
-                return line_number
-
-    return -1
-
-
-def _log_error_message_for_invalid_config_file_option(
-    error: ValidationError, config_file_path: str
-) -> None:
-    """Logs an error message regarding an invalid configuration in the config file
-       and its associated line number
-    """
-    for invalid_option in error.messages:
-
-        # Revert the option to its preformatted state
-        invalid_option = invalid_option.replace("_", "-")
-
-        line_number = _get_line_number_of_option_in_config_file(
-            invalid_option, config_file_path
-        )
-
-        if line_number != -1:
-            logging.error(
-                f"Invalid option on line {line_number} in configuration file: {invalid_option}",
-            )
-        else:
-            logging.error(f"Invalid option in configuration file: {error}")
-
-
 def _replace_hyphens_with_underscores_in_dict_keys(
     dictionary: Dict[Any, Any]
 ) -> Dict[Any, Any]:
@@ -215,9 +226,8 @@ def _parse_config_file(config_file_path: str) -> MutableMapping[str, Any]:
 
     try:
         parsed_config_file = toml.loads(config_file)
-    except RuntimeError as error:
-        logging.error(f"Failed to parse configuration file: {error}")
-        raise ConfigFileParsingError(error)
+    except toml.TomlDecodeError as error:
+        raise ConfigFileParsingError(error, config_file_path)
 
     return parsed_config_file
 
@@ -238,8 +248,7 @@ def _load_config_file(config_file_path: str) -> Config:
     try:
         config: Config = transient_config_schema.load(reformatted_config)
     except ValidationError as error:
-        _log_error_message_for_invalid_config_file_option(error, config_file_path)
-        raise ConfigFileOptionError(error)
+        raise ConfigFileOptionError(error, config_file_path)
 
     return config
 
@@ -269,7 +278,6 @@ def _create_transient_config_with_schema(
     try:
         validated_config: Config = schema.load(config)
     except ValidationError as error:
-        logging.error(f"Invalid command line arguments given: {error}")
         raise CLIArgumentError(error)
 
     return validated_config

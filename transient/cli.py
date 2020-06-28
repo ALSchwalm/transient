@@ -23,13 +23,19 @@ def _get_version(
 
 
 _common_options = [
-    click.option("-image-frontend", help="The location to place per-vm disk images",),
+    click.option(
+        "-image-frontend", type=str, help="The location to place per-vm disk images",
+    ),
     click.option(
         "-image-backend",
+        type=str,
         help="The location to place the shared, read-only backing disk images",
     ),
     click.option(
-        "-image", multiple=True, help="Disk image to use (this option can be repeated)",
+        "-image",
+        multiple=True,
+        type=str,
+        help="Disk image to use (this option can be repeated)",
     ),
 ]
 
@@ -116,6 +122,7 @@ def cli_entry(verbose: int) -> None:
     "-copy-in-before",
     "-b",
     multiple=True,
+    type=str,
     help="Copy a file or directory into the VM before running "
     + "(path/on/host:/absolute/path/on/guest)",
 )
@@ -123,10 +130,11 @@ def cli_entry(verbose: int) -> None:
     "-copy-out-after",
     "-a",
     multiple=True,
+    type=str,
     help="Copy a file or directory out of the VM after running "
     + "(/absolute/path/on/VM:path/on/host)",
 )
-@click.option("-name", help="Create a vm with the given name")
+@click.option("-name", type=str, help="Create a vm with the given name")
 @click.option(
     "-ssh-console",
     "-ssh",
@@ -139,32 +147,37 @@ def cli_entry(verbose: int) -> None:
     is_flag=True,
     help="Show the serial output before SSH connects (implies -ssh)",
 )
-@click.option("-ssh-user", "-u", help="User to pass to SSH")
-@click.option("-ssh-bin-name", help="SSH binary to use")
+@click.option("-ssh-user", "-u", type=str, help="User to pass to SSH")
+@click.option("-ssh-bin-name", type=str, help="SSH binary to use")
 @click.option(
-    "-ssh-timeout", help="Time to wait for SSH connection before failing",
+    "-ssh-timeout", type=int, help="Time to wait for SSH connection before failing",
 )
 @click.option(
-    "-ssh-port", help="Host port the guest port 22 is connected to",
+    "-ssh-port", type=int, help="Host port the guest port 22 is connected to",
 )
 @click.option(
-    "-ssh-command", "-cmd", help="Run an ssh command instead of a console",
+    "-ssh-command", "-cmd", type=str, help="Run an ssh command instead of a console",
 )
 @click.option(
-    "-shutdown-timeout", help="The time to wait for shutdown before terminating QEMU",
+    "-shutdown-timeout",
+    type=int,
+    help="The time to wait for shutdown before terminating QEMU",
 )
 @click.option(
     "-qmp-timeout",
+    type=int,
     help="The time in seconds to wait for the QEMU QMP connection to be established",
 )
 @click.option(
     "-copy-timeout",
+    type=int,
     help="The maximum time to wait for a copy-in-before or copy-out-after operation to complete",
 )
 @click.option(
     "-shared-folder",
     "-s",
     multiple=True,
+    type=str,
     help="Share a host directory with the guest (/path/on/host:/path/on/guest)",
 )
 @click.option(
@@ -186,7 +199,9 @@ def run_impl(**kwargs: Any) -> None:
         configuration.ConfigFileOptionError,
         configuration.ConfigFileParsingError,
         configuration.CLIArgumentError,
-    ):
+        FileNotFoundError,
+    ) as e:
+        print(e, file=sys.stderr)
         sys.exit(1)
 
     store = image.ImageStore(
@@ -205,14 +220,15 @@ def run_impl(**kwargs: Any) -> None:
 @with_common_options
 @click.option("-force", "-f", help="Do not prompt before deletion", is_flag=True)
 @click.option(
-    "-name", help="Delete images associated with the given vm name",
+    "-name", type=str, help="Delete images associated with the given vm name",
 )
 @cli_entry.command("delete")
 def delete_impl(**kwargs: Any) -> None:
     """Delete transient disks"""
     try:
         config = configuration.create_transient_delete_config(kwargs)
-    except configuration.CLIArgumentError:
+    except configuration.CLIArgumentError as e:
+        print(e, file=sys.stderr)
         sys.exit(1)
 
     store = image.ImageStore(
@@ -250,14 +266,15 @@ def delete_impl(**kwargs: Any) -> None:
 @click.help_option("-h", "--help")
 @with_common_options
 @click.option(
-    "-name", help="List disks associated with the given vm name",
+    "-name", type=str, help="List disks associated with the given vm name",
 )
 @cli_entry.command("list")
 def list_impl(**kwargs: Any) -> None:
     """List transient disk information"""
     try:
         config = configuration.create_transient_list_config(kwargs)
-    except configuration.CLIArgumentError:
+    except configuration.CLIArgumentError as e:
+        print(e, file=sys.stderr)
         sys.exit(1)
 
     store = image.ImageStore(
@@ -280,17 +297,18 @@ def list_impl(**kwargs: Any) -> None:
 
 
 @click.help_option("-h", "--help")
-@click.option("-file", "-f", help="Specify a path to the Imagefile")
+@click.option("-file", "-f", type=str, help="Specify a path to the Imagefile")
 @click.option(
     "-image-backend",
+    type=str,
     help="The location to place the shared, read-only backing disk images",
 )
 @click.option(
-    "-ssh-timeout", default=90, help="Time to wait for SSH connection before failing"
+    "-ssh-timeout", type=int, help="Time to wait for SSH connection before failing"
 )
 @click.option(
     "-qmp-timeout",
-    default=10,
+    type=int,
     help="The time in seconds to wait for the QEMU QMP connection to be established",
 )
 @click.option(
@@ -303,7 +321,8 @@ def build_impl(**kwargs: Any) -> None:
     """List transient disk information"""
     try:
         config = configuration.create_transient_build_config(kwargs)
-    except configuration.CLIArgumentError:
+    except configuration.CLIArgumentError as e:
+        print(e, file=sys.stderr)
         sys.exit(1)
     store = image.ImageStore(backend_dir=config.image_backend, frontend_dir=None)
     builder = build.ImageBuilder(config, store)
