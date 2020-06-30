@@ -8,7 +8,7 @@ directly to QEMU.
 When a disk image is specified via the `-image` flag, a few things happen:
 
 1. `transient` checks for the existence of a disk of the provided image type,
-associated with the given vm name in the Disk Frontend.
+associated with the given VM name in the Disk Frontend.
 
 2. If no such disk exists, `transient` checks the Disk Backend for a disk of
 the provided image type. If the disk exists in the backend, a copy is made in
@@ -21,14 +21,14 @@ the box. The downloaded image is placed in the Disk Backend and a VM-specific co
 is placed in the Disk Frontend.
 
 Once the disk has been created, `transient` passes the new disk as an additional
-argument on the QEMU commandline. Because the image in the Disk Frontend is
-associated with the virtual machien name, subsequent invocations of `transient`
+argument on the QEMU command line. Because the image in the Disk Frontend is
+associated with the virtual machine name, subsequent invocations of `transient`
 with the same `name` and disk `-image` flags will boot using the same images.
 
-When `transient` starts a virtual machine, it will acutomatically connect the
+When `transient` starts a virtual machine, it will automatically connect the
 user to either the QEMU process or an SSH connection with the VM. Which one is
 determined by the flags described below. But regardless of the connection type,
-once the user is no longer connect (e.g., the ssh connection is termianted),
+once the user is no longer connect (e.g., the ssh connection is terminated),
 `transient` **automatically shuts down the virtual machine**.
 
 ### Usage
@@ -46,7 +46,7 @@ creates a copy in the disk frontend. This disk will be passed to the virtual mac
 For additional information, see [Getting Images](/details/images/).
 
 - `-image-frontend FRONTEND`: Use the provided `FRONTEND` path as the location to
-place the per-vm image copies. Note: this path defaults to
+place the per-VM image copies. Note: this path defaults to
 `~/.local/share/transient/frontend`.
 
 - `-image-backend BACKEND`: Use the provided `BACKEND` path as the location to
