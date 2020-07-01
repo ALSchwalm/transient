@@ -5,7 +5,7 @@
 is a FUSE filesystem that uses `ssh` to perform the actual file transfer.
 
 A shared folder can be created with a guest by specifying `-shared-folder` on the
-`transient run` commandline. This will cause the `transient` to perform a series of
+`transient run` command line. This will cause the `transient` to perform a series of
 operations:
 
 1. Establish an SSH connection with the guest, using the `-A` flag to forward the

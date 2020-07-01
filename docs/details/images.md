@@ -5,7 +5,7 @@ When the user uses the `-image` flag, the argument consists of three parts.
 The image name, the protocol, and the source. So in this flag:
 `-image myimage,http=https://cloud.centos.org/centos/7/images/CentOS-7-x86_64-GenericCloud-20150628_01.qcow2`
 The image name is 'myimage', the protocol is 'http' and the source is the
-'cloud.centos.org' url. When a transient command has been run with this
+'cloud.centos.org' URL. When a transient command has been run with this
 flag, the image will be retrieved using the given protocol, and stored
 under the provided name in the backend.
 

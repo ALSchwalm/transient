@@ -19,7 +19,7 @@ images associated with a given backend image by specifying only `-image` and not
 is specified, information about the backend image itself is listed
 
 - `-image-frontend FRONTEND`: Use the provided `FRONTEND` path as the location to
-find the per-vm image copies. Note: this path defaults to
+find the per-VM image copies. Note: this path defaults to
 `~/.local/share/transient/frontend`.
 
 - `-image-backend BACKEND`: Use the provided `BACKEND` path as the location to
