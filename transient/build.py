@@ -2,7 +2,9 @@ import enum
 import os
 import lark  # type: ignore
 import logging
+import json
 import pathlib
+import re
 import shutil
 import subprocess
 
@@ -13,7 +15,18 @@ from . import utils
 from . import ssh
 from . import static
 
-from typing import cast, Any, Sequence, Callable, List, Optional, TypeVar, Type
+from typing import (
+    cast,
+    Any,
+    Sequence,
+    Callable,
+    List,
+    Optional,
+    TypeVar,
+    Type,
+    Tuple,
+    Union,
+)
 
 
 IMAGEFILE_GRAMMAR = r"""
@@ -63,7 +76,7 @@ IMAGEFILE_PARSER = lark.Lark(IMAGEFILE_GRAMMAR, parser="lalr").parse
 
 
 class Command:
-    def run(self) -> None:
+    def run(self) -> Tuple[Optional[str], Optional[str]]:
         ...
 
 
@@ -72,11 +85,11 @@ class HostCommand(Command):
     # https://github.com/python/mypy/issues/708
     cmd: Any
 
-    def __init__(self, cmd: Callable[[], None]):
+    def __init__(self, cmd: Callable[[], Tuple[Optional[str], Optional[str]]]):
         self.cmd = cmd
 
-    def run(self) -> None:
-        return cast(None, self.cmd())
+    def run(self) -> Tuple[Optional[str], Optional[str]]:
+        return cast(Tuple[Optional[str], Optional[str]], self.cmd())
 
 
 class GuestCommand(Command):
@@ -85,6 +98,8 @@ class GuestCommand(Command):
     connect_timeout: int
     run_timeout: Optional[int]
     stdin: utils.FILE_TYPE
+    stdout: Optional[utils.FILE_TYPE]
+    stderr: Optional[utils.FILE_TYPE]
 
     def __init__(
         self,
@@ -93,24 +108,33 @@ class GuestCommand(Command):
         connect_timeout: int,
         run_timeout: Optional[int] = None,
         stdin: utils.FILE_TYPE = subprocess.DEVNULL,
+        capture_stdout: bool = False,
+        capture_stderr: bool = False,
     ):
         self.cmd = cmd
         self.ssh_config = ssh_config
         self.connect_timeout = connect_timeout
         self.run_timeout = run_timeout
         self.stdin = stdin
+        self.stdout = subprocess.PIPE if capture_stdout is True else None
+        self.stderr = subprocess.PIPE if capture_stderr is True else None
 
-    def run(self) -> None:
+    def run(self) -> Tuple[Optional[str], Optional[str]]:
         client = ssh.SshClient(self.ssh_config, command=self.cmd)
 
-        # Connect stdout/stderr normally
         handle = client.connect(
-            self.connect_timeout, stdin=self.stdin, stdout=None, stderr=None
+            self.connect_timeout, stdin=self.stdin, stdout=self.stdout, stderr=None
         )
 
-        result = handle.wait(self.run_timeout)
+        raw_stdout, raw_stderr = handle.communicate(timeout=self.run_timeout)
+        stdout = raw_stdout.decode("utf-8") if raw_stdout is not None else None
+        stderr = raw_stderr.decode("utf-8") if raw_stderr is not None else None
+
+        result = handle.poll()
         if result != 0:
             raise RuntimeError(f"Command '{self.cmd}' failed with code {result}")
+        else:
+            return stdout, stderr
 
 
 class GuestChrootCommand(GuestCommand):
@@ -120,12 +144,23 @@ class GuestChrootCommand(GuestCommand):
         ssh_config: ssh.SshConfig,
         connect_timeout: int,
         run_timeout: Optional[int] = None,
+        stdin: utils.FILE_TYPE = subprocess.DEVNULL,
+        capture_stdout: bool = False,
+        capture_stderr: bool = False,
     ):
         escaped_command = cmd.replace("'", "'\\''")
         chroot_command = (
             f"""unshare --fork --pid chroot /mnt /bin/bash -c '{escaped_command}' """
         )
-        super().__init__(chroot_command, ssh_config, connect_timeout, run_timeout)
+        super().__init__(
+            chroot_command,
+            ssh_config,
+            connect_timeout,
+            run_timeout,
+            stdin,
+            capture_stdout,
+            capture_stderr,
+        )
 
 
 class ImageInstruction:
@@ -413,10 +448,6 @@ class ImageBuilder:
             raise RuntimeError("Exactly one FROM instruction must appear per Imagefile")
         self.from_instruction = from_instructions[0]
 
-        # TODO: remove this once we support non-from-scratch builds
-        if not self.__is_from_scratch():
-            raise NotImplementedError("Only FROM scratch images can be built currently")
-
         disk_instructions = self.__instruction_type(DiskInstruction)
         part_instructions = self.__instruction_type(PartitionInstruction)
 
@@ -490,7 +521,7 @@ class ImageBuilder:
                     # Arbitrary cpu/mem
                     # TODO: this should be configurable
                     "-smp",
-                    "2",
+                    "1",
                     "-m",
                     "1G",
                     # Use our kernel/initramfs
@@ -499,7 +530,7 @@ class ImageBuilder:
                     "-initrd",
                     str(initramfs),
                     "-append",
-                    "console=ttyS0",
+                    "notsc console=ttyS0 tsc=reliable no_timer_check usbcore.nousb cryptomgr.notests",
                     # Don't require graphics
                     "-serial",
                     "stdio",
@@ -553,7 +584,7 @@ class ImageBuilder:
         if not self.__is_from_scratch():
             existing = self.store.retrieve_image(self.from_instruction.source).path
             logging.info(f"Copying backend file as base of new image at '{working}'")
-            with open(existing, "rb") as source, open(working, "rb") as dest:
+            with open(existing, "rb") as source, open(working, "wb") as dest:
                 # Get the size of the source for the progress bar
                 size = source.seek(0, os.SEEK_END)
                 source.seek(0)
@@ -576,21 +607,60 @@ class ImageBuilder:
             )
         return working
 
-    def __run_command_in_guest(self, command: str, allowfail: bool = False) -> None:
+    def __combine_commands(self, cmds: List[str], allowfail: bool) -> str:
+        if allowfail is True:
+            return "; ".join(cmds)
+        else:
+            return " && ".join(cmds)
+
+    def __run_command_in_guest(
+        self,
+        command: Union[str, List[str]],
+        allowfail: bool = False,
+        capture_stdout: bool = False,
+        capture_stderr: bool = False,
+    ) -> Tuple[Optional[str], Optional[str]]:
+        if isinstance(command, list):
+            single_cmd = self.__combine_commands(command, allowfail)
+        else:
+            single_cmd = command
+        print(single_cmd)
         try:
-            GuestCommand(command, self.ssh_config, self.config.ssh_timeout).run()
+            return GuestCommand(
+                single_cmd,
+                self.ssh_config,
+                self.config.ssh_timeout,
+                capture_stdout=capture_stdout,
+                capture_stderr=capture_stderr,
+            ).run()
         except:
             if allowfail is False:
                 raise
+            return None, None
 
     def __run_command_in_guest_chroot(
-        self, command: str, allowfail: bool = False
-    ) -> None:
+        self,
+        command: Union[str, List[str]],
+        allowfail: bool = False,
+        capture_stdout: bool = False,
+        capture_stderr: bool = False,
+    ) -> Tuple[Optional[str], Optional[str]]:
+        if isinstance(command, list):
+            single_cmd = self.__combine_commands(command, allowfail)
+        else:
+            single_cmd = command
         try:
-            GuestChrootCommand(command, self.ssh_config, self.config.ssh_timeout).run()
+            return GuestChrootCommand(
+                single_cmd,
+                self.ssh_config,
+                self.config.ssh_timeout,
+                capture_stdout=capture_stdout,
+                capture_stderr=capture_stderr,
+            ).run()
         except:
             if allowfail is False:
                 raise
+            return None, None
 
     def __inspect_guest_chroot(self) -> None:
         config = self.ssh_config.override(args=[*self.ssh_config.args, "-t"])
@@ -609,29 +679,24 @@ class ImageBuilder:
     def __prepare_chroot(self) -> None:
         # Adapted from arch-chroot
         self.__run_command_in_guest(
-            'mount udev "/mnt/dev" -t devtmpfs -o mode=0755,nosuid', allowfail=True
-        )
-        self.__run_command_in_guest(
-            'mount proc "/mnt/proc" -t proc -o nosuid,noexec,nodev', allowfail=True
-        )
-        self.__run_command_in_guest(
-            'mount sys "/mnt/sys" -t sysfs -o nosuid,noexec,nodev,ro', allowfail=True
-        )
-        self.__run_command_in_guest(
-            'mount devpts "/mnt/dev/pts" -t devpts -o mode=0620,gid=5,nosuid,noexec',
+            [
+                'mount udev "/mnt/dev" -t devtmpfs -o mode=0755,nosuid',
+                'mount proc "/mnt/proc" -t proc -o nosuid,noexec,nodev',
+                'mount sys "/mnt/sys" -t sysfs -o nosuid,noexec,nodev,ro',
+                'mount devpts "/mnt/dev/pts" -t devpts -o mode=0620,gid=5,nosuid,noexec',
+                'mount shm "/mnt/dev/shm" -t tmpfs -o mode=1777,nosuid,nodev',
+                'mount /run "/mnt/run" --bind',
+                'mount tmp "/mnt/tmp" -t tmpfs -o mode=1777,strictatime,nodev,nosuid',
+                "mount /etc/resolv.conf /mnt/etc/resolv.conf --bind",
+            ],
             allowfail=True,
         )
-        self.__run_command_in_guest(
-            'mount shm "/mnt/dev/shm" -t tmpfs -o mode=1777,nosuid,nodev', allowfail=True
-        )
-        self.__run_command_in_guest('mount /run "/mnt/run" --bind', allowfail=True)
-        self.__run_command_in_guest(
-            'mount tmp "/mnt/tmp" -t tmpfs -o mode=1777,strictatime,nodev,nosuid',
-            allowfail=True,
-        )
-        self.__run_command_in_guest(
-            "cp -p /etc/resolv.conf /mnt/etc/resolv.conf", allowfail=True
-        )
+
+        # Some images (RHEL/CentOS) may require selinux labeling. If files are created
+        # without the appropriate labels, the filesystem will require re-labeling which
+        # can be time-consuming. To avoid this, always attempt to load a policy in the
+        # context of the guest before executing any user commands
+        self.__run_command_in_guest_chroot("load_policy -i", allowfail=True)
         self.chroot_ready = True
 
     def __partition_instructions_by_mount(
@@ -644,6 +709,68 @@ class ImageBuilder:
             return len(pathlib.Path(instr.mount).parts)
 
         return sorted(mountable, key=sort_key)
+
+    def __read_fstab(self) -> str:
+        blkinfo, _ = self.__run_command_in_guest(
+            "lsblk -no FSTYPE,PATH -P", capture_stdout=True
+        )
+        assert blkinfo is not None
+        for candidate in blkinfo.strip().split("\n"):
+            match = re.match(r'FSTYPE="(.*?)" PATH="(.*?)"', candidate)
+            assert match is not None
+            fstype = match.group(1)
+            path = match.group(2)
+
+            # If we don't recognize the partition type, skip it
+            if fstype == "":
+                continue
+
+            logging.info(f"Attempting to read /etc/fstab from {path} (fstype={fstype})")
+            try:
+                raw_fstab, _ = self.__run_command_in_guest(
+                    [
+                        f"mount -t {fstype} {path} /mnt > /dev/null",
+                        "cat /mnt/etc/fstab",
+                        "umount /mnt > /dev/null",
+                    ],
+                    capture_stdout=True,
+                )
+                assert raw_fstab is not None
+                return raw_fstab
+            except Exception as e:
+                logging.debug(f"Failed to read /etc/fstab from {path}: {e}")
+                continue
+        raise RuntimeError("Unable to locate /etc/fstab")
+
+    def __excluded_mount_fstypes(self) -> List[str]:
+        return ["nfs", "cifs", "swap"]
+
+    def __parse_fstab(self, contents: str) -> List[Tuple[str, str, str]]:
+        entries: List[Tuple[str, str, str]] = []
+        for num, line in enumerate(contents.split("\n")):
+            if line.strip() == "" or line.strip().startswith("#"):
+                continue
+
+            # NOTE: for now, we ignore the options
+            match = re.match(r"^(\S+)\s+(\S+)\s+(\S+)", line)
+            assert match is not None
+
+            dev = match.group(1)
+            mnt = match.group(2)
+            fstype = match.group(3)
+
+            if fstype.lower() in self.__excluded_mount_fstypes():
+                logging.info(f"Ignoring fstab line {num} due to fstype '{fstype}'")
+                continue
+            elif mnt.lower() == "none":
+                logging.info(f"Ignoring fstab line {num} due to mount point 'none'")
+                continue
+            entries.append((dev, mnt, fstype))
+
+        def sort_key(entry: Tuple[str, str, str]) -> int:
+            return len(pathlib.Path(entry[1]).parts)
+
+        return sorted(entries, key=sort_key)
 
     def __prepare_chroot_early(self) -> None:
         if self.__is_from_scratch():
@@ -670,8 +797,14 @@ class ImageBuilder:
                     f"mount /dev/sda{partition_instr.number} /mnt/{partition_instr.mount}"
                 )
         else:
-            # TODO: find and read /etc/fstab, then do the mounts
-            pass
+            # Activate any volume groups that may exist
+            self.__run_command_in_guest(f"vgchange -ay", allowfail=True)
+
+            fstab_contents = self.__read_fstab()
+            for entry in self.__parse_fstab(fstab_contents):
+                self.__run_command_in_guest(
+                    f"mount {entry[0]} -t {entry[2]} /mnt/{entry[1]}"
+                )
 
     def __is_executable_instruction(self, instr: ImageInstruction) -> bool:
         return isinstance(instr, RunInstruction) or isinstance(instr, InspectInstruction)

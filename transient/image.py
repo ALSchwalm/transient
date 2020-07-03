@@ -276,7 +276,7 @@ class BaseImageInfo:
     image_info: Dict[str, Any]
 
     def __init__(self, store: "ImageStore", path: str) -> None:
-        stdout = utils.run_check_retcode(
+        stdout, _ = utils.run_check_retcode(
             [store.qemu_img_bin, "info", "-U", "--output=json", path]
         )
         assert stdout is not None
@@ -310,7 +310,7 @@ class FrontendImageInfo(BaseImageInfo):
         backend_path = self.image_info["full-backing-filename"]
         try:
             self.backend = BackendImageInfo(store, backend_path)
-        except subprocess.CalledProcessError:
+        except utils.TransientProcessError:
             # If the path doesn't exist, it was either deleted before
             # we could run qemu-img, or it never existed at all
             if not os.path.exists(backend_path):

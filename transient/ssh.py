@@ -5,7 +5,7 @@ import signal
 import subprocess
 import time
 
-from typing import Optional, List, IO, Any, Union, Dict
+from typing import Optional, List, IO, Any, Union, Dict, Tuple
 
 from . import linux
 from . import utils
@@ -195,8 +195,13 @@ def _prepare_builtin_keys() -> List[str]:
 
 
 def scp(
-    source: str, destination: str, config: SshConfig, copy_from: bool = False
-) -> None:
+    source: str,
+    destination: str,
+    config: SshConfig,
+    copy_from: bool = False,
+    capture_stdout: bool = False,
+    capture_stderr: bool = True,
+) -> Tuple[Optional[str], Optional[str]]:
     keys = _prepare_builtin_keys()
     if config.user is not None:
         host = f"{config.user}@{config.host}"
@@ -211,7 +216,15 @@ def scp(
 
     if copy_from is False:
         host += f":{destination}"
-        utils.run_check_retcode(["scp", *args, source, host])
+        return utils.run_check_retcode(
+            ["scp", *args, source, host],
+            capture_stdout=capture_stdout,
+            capture_stderr=capture_stderr,
+        )
     else:
         host += f":{source}"
-        utils.run_check_retcode(["scp", *args, host, destination])
+        return utils.run_check_retcode(
+            ["scp", *args, host, destination],
+            capture_stdout=capture_stdout,
+            capture_stderr=capture_stderr,
+        )

@@ -39,3 +39,13 @@ Scenario: The built image is usable
      When the vm runs to completion
      Then the return code is 0
       And stdout contains "ssh-command working"
+
+Scenario: Images can be built based on other images
+    Given a transient build command
+      And an imagefile "resources/imagefiles/Imagefile.from_existing"
+      And a build directory "artifacts/build-dir"
+      And a backend "./artifacts/test-backend"
+      And a name "test-build-centos-existing"
+     When the transient command is run
+     Then the return code is 0
+      And the file "artifacts/test-backend/test%2Dbuild%2Dcentos%2Dexisting" exists

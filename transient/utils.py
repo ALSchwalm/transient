@@ -14,7 +14,7 @@ except ImportError:
     # Try backported to PY<37 `importlib_resources`.
     import importlib_resources as pkg_resources  # type: ignore
 
-from typing import cast, Optional, ContextManager, List, Union, IO, Any
+from typing import cast, Optional, ContextManager, List, Union, IO, Any, Tuple
 from . import static
 
 # From the typeshed Popen definitions
@@ -146,25 +146,32 @@ def copy_with_progress(
 
 
 def run_check_retcode(
-    cmd: List[str], *, timeout: Optional[int] = None, redirect_stdout: bool = True
-) -> Optional[str]:
-    stdout: Optional[int] = subprocess.PIPE
-    if redirect_stdout is False:
-        stdout = None
+    cmd: List[str],
+    *,
+    timeout: Optional[int] = None,
+    capture_stdout: bool = True,
+    capture_stderr: bool = True,
+) -> Tuple[Optional[str], Optional[str]]:
+    stdout_location: Optional[int] = subprocess.PIPE
+    if capture_stdout is False:
+        stdout_location = None
+
+    stderr_location: Optional[int] = subprocess.PIPE
+    if capture_stderr is False:
+        stderr_location = None
 
     try:
         handle = subprocess.run(
             cmd,
             stdin=subprocess.DEVNULL,
-            stdout=stdout,
-            stderr=subprocess.PIPE,
+            stdout=stdout_location,
+            stderr=stderr_location,
             check=True,
             timeout=timeout,
         )
-        if handle.stdout is not None:
-            return handle.stdout.decode("utf-8")
-        else:
-            return None
+        stdout = handle.stdout.decode("utf-8") if handle.stdout is not None else None
+        stderr = handle.stderr.decode("utf-8") if handle.stderr is not None else None
+        return stdout, stderr
     except subprocess.CalledProcessError as e:
         raise TransientProcessError(
             cmd=e.cmd, returncode=e.returncode, stdout=e.stdout, stderr=e.stderr
