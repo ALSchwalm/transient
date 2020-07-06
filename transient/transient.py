@@ -1,4 +1,5 @@
 from . import configuration
+from . import editor
 from . import qemu
 from . import image
 from . import utils
@@ -77,50 +78,6 @@ class TransientVm:
             or self.config.ssh_command is not None
         )
 
-    def __has_readable_kernel(self) -> bool:
-        kernels = glob.glob("/boot/vmlinuz-*")
-        if len(kernels) == 0:
-            logging.debug(f"No kernels found")
-            return False
-        for kernel in kernels:
-            if os.access(kernel, os.R_OK) is True:
-                logging.debug(f"Found readable kernel at {kernel}")
-                return True
-        logging.debug(f"No readable kernels found")
-        return False
-
-    @contextlib.contextmanager
-    def __libguestfs_environment(self) -> Iterator[Environ]:
-        """Configures an environment for running libguestfs commands"""
-        env = os.environ
-
-        # Avoid using libvirt explicitly
-        env["LIBGUESTFS_BACKEND"] = "direct"
-
-        # And do verbose logging so we can debug failures
-        env["LIBGUESTFS_TRACE"] = "1"
-        env["LIBGUESTFS_DEBUG"] = "1"
-
-        # On platforms that don't have an available kernel or the kernel is
-        # not readable (e.g., docker and ubuntu), use ours.
-        if not self.__has_readable_kernel():
-            logging.info(f"No readable kernel detected. Using transient kernel")
-
-            # We only actually need a temporary directory for modules to satisfy
-            # libguestfs, so make one here.
-            with utils.package_file_path(
-                "transient-kernel"
-            ) as kernel, tempfile.TemporaryDirectory() as modules:
-                # libguestfs expects a modules.dep in the modules directory (but
-                # it can be empty)
-                open(os.path.join(modules, "modules.dep"), "w+")
-
-                env["SUPERMIN_MODULES"] = modules
-                env["SUPERMIN_KERNEL"] = str(kernel)
-                yield env
-        else:
-            yield env
-
     def __do_copy_command(self, cmd: List[str], environment: Environ) -> None:
         cmd_name = cmd[0]
         try:
@@ -171,16 +128,14 @@ class TransientVm:
         if not vm_absolute_path.startswith("/"):
             raise RuntimeError(f"Absolute path for guest required: {vm_absolute_path}")
 
-        with self.__libguestfs_environment() as environment:
-            for vm_image in self.vm_images:
-                assert vm_image.backend is not None
-                logging.info(
-                    f"Copying from '{host_path}' to '{vm_image.backend.identifier}:{vm_absolute_path}'"
-                )
-                self.__do_copy_command(
-                    ["virt-copy-in", "-a", vm_image.path, host_path, vm_absolute_path],
-                    environment,
-                )
+        for vm_image in self.vm_images:
+            assert vm_image.backend is not None
+            logging.info(
+                f"Copying from '{host_path}' to '{vm_image.backend.identifier}:{vm_absolute_path}'"
+            )
+
+            with editor.ImageEditor(self.config, vm_image.path) as edit:
+                edit.copy_in(host_path, vm_absolute_path)
 
     def __needs_to_copy_out_files_after_running(self) -> bool:
         """Checks if at least one directory on the VM needs to be copied out
@@ -210,16 +165,14 @@ class TransientVm:
         if not vm_absolute_path.startswith("/"):
             raise RuntimeError(f"Absolute path for guest required: {vm_absolute_path}")
 
-        with self.__libguestfs_environment() as environment:
-            for vm_image in self.vm_images:
-                assert vm_image.backend is not None
-                logging.info(
-                    f"Copying from '{vm_image.backend.identifier}:{vm_absolute_path}' to '{host_path}'"
-                )
-                self.__do_copy_command(
-                    ["virt-copy-out", "-a", vm_image.path, vm_absolute_path, host_path,],
-                    environment,
-                )
+        for vm_image in self.vm_images:
+            assert vm_image.backend is not None
+            logging.info(
+                f"Copying from '{vm_image.backend.identifier}:{vm_absolute_path}' to '{host_path}'"
+            )
+
+            with editor.ImageEditor(self.config, vm_image.path) as edit:
+                edit.copy_out(vm_absolute_path, host_path)
 
     def __qemu_added_args(self) -> List[str]:
         new_args = ["-name", self.name]

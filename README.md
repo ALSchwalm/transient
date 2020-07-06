@@ -18,10 +18,8 @@ source, clone this repository and run `pip install -e '.[dev]'` from the project
 root. As always, the usage of python [virtual environments](https://docs.python.org/3/tutorial/venv.html)
 is recommended for a development setup.
 
-`transient` has dependencies on a number of packages. On ubuntu, these can be installed
-by running `apt-get install ssh qemu-system-x86 python3-pip libguestfs-tools`. Note that
-`libguestfs-tools` is only required when using the `-copy-in-before` and `-copy-out-after`
-flags.
+`transient` has dependencies on very few packages. On ubuntu, these can be installed
+by running `apt-get install ssh qemu-system-x86 python3-pip`.
 
 Documentation
 -------------

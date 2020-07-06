@@ -33,14 +33,13 @@ jobs:
     - name: Install package dependencies
       run: |
         apt-get -y update
-        apt-get -y install ssh qemu-system-x86 python3-pip libguestfs-tools
+        apt-get -y install ssh qemu-system-x86 python3-pip curl
     - name: Install python dependencies
       run: |
         python3 -m pip install --upgrade pip
         python3 -m pip install -e '.[dev]'
     - name: Run tests
       run: |
-        mkdir /lib/modules/
         make test-docker-ci
 
   Test-Multi-Python:
@@ -53,7 +52,7 @@ jobs:
     - name: Install package dependencies
       run: |
         sudo apt-get update
-        sudo apt-get install ssh qemu libguestfs-tools
+        sudo apt-get install ssh qemu curl
     - name: Set up Python ${{ matrix.python-version }}
       uses: actions/setup-python@v2
       with:

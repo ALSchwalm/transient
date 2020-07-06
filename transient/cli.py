@@ -213,6 +213,7 @@ def run_impl(**kwargs: Any) -> None:
         trans.run()
         sys.exit(0)
     except utils.TransientProcessError as e:
+        print(e, file=sys.stderr)
         sys.exit(e.returncode)
 
 

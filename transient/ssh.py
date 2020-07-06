@@ -202,7 +202,6 @@ def scp(
     capture_stdout: bool = False,
     capture_stderr: bool = True,
 ) -> Tuple[Optional[str], Optional[str]]:
-    keys = _prepare_builtin_keys()
     if config.user is not None:
         host = f"{config.user}@{config.host}"
     else:
