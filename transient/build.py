@@ -188,7 +188,7 @@ class AddInstruction(ImageInstruction):
             else:
                 commands.append(
                     editor.GuestCommand(
-                        f"tar xzf - --directory={effective_destination}",
+                        f"bsdtar xfP - --directory={effective_destination}",
                         builder.editor.ssh_config,
                         builder.config.ssh_timeout,
                         stdin=open(host_src, "rb"),
