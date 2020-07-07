@@ -56,6 +56,16 @@ def step_impl(context):
     }
 
 
+@given("a transient vm with no qemu arguments")
+def step_impl(context):
+    context.vm_config = {
+        "command": "run",
+        "transient-early-args": [],
+        "transient-args": list(DEFAULT_TRANSIENT_ARGS),
+        "qemu-args": [],
+    }
+
+
 @given("a transient delete command")
 def step_impl(context):
     context.vm_config = {
