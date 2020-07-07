@@ -78,7 +78,7 @@ class GuestCommand(Command):
         client = ssh.SshClient(self.ssh_config, command=self.cmd)
 
         handle = client.connect(
-            self.connect_timeout, stdin=self.stdin, stdout=self.stdout, stderr=None
+            self.connect_timeout, stdin=self.stdin, stdout=self.stdout, stderr=self.stderr
         )
 
         raw_stdout, raw_stderr = handle.communicate(timeout=self.run_timeout)
