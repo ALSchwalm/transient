@@ -8,6 +8,7 @@ build/
 dist/
 transient-kernel/
 working/
+tags
 
 # artifacts produced from testing
 artifacts
