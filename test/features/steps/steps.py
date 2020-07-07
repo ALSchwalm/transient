@@ -80,7 +80,7 @@ def step_impl(context):
 def step_impl(context):
     # Build commands can take a _long_ time (when we don't have KVM), so wait
     # a while for them to finish
-    context.wait_time = VM_WAIT_TIME * 3
+    context.wait_time = VM_WAIT_TIME * 6
     context.vm_config = {
         "command": "build",
         "transient-early-args": [],
