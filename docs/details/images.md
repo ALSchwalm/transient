@@ -32,6 +32,12 @@ URL and store it under a given name. So for example
 will download the image from 'cloud.centos.org' and store it in the
 backend as 'myimage'.
 
+### File
+
+The `file` protocol copies an existing file as a new backend image. For
+example, `-image myimage,file=/path/to/image.qcow2` will copy file `image.qcow2`
+to the backend with the name `myimage`.
+
 ### Frontend
 
 The `frontend` protocol is used to build a backend image from some

@@ -207,6 +207,24 @@ class FrontendImageProtocol(BaseImageProtocol):
         logging.info("Image copy complete.")
 
 
+class FileImageProtocol(BaseImageProtocol):
+    def __init__(self) -> None:
+        super().__init__(re.compile(r"file", re.IGNORECASE))
+
+    def _do_retrieve_image(
+        self, store: "ImageStore", spec: "ImageSpec", destination: IO[bytes]
+    ) -> None:
+
+        print(f"Copying '{spec.source}' as new backend '{spec.name}'")
+
+        with open(spec.source, "rb") as existing_file:
+            size = existing_file.seek(0, os.SEEK_END)
+            existing_file.seek(0)
+            utils.copy_with_progress(existing_file, destination, size)
+
+        logging.info("File copy complete.")
+
+
 class HttpImageProtocol(BaseImageProtocol):
     def __init__(self) -> None:
         super().__init__(re.compile(r"http", re.IGNORECASE))
@@ -239,6 +257,7 @@ _IMAGE_PROTOCOLS = [
     VagrantImageProtocol(),
     FrontendImageProtocol(),
     HttpImageProtocol(),
+    FileImageProtocol(),
 ]
 
 
