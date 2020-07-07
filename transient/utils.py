@@ -181,7 +181,7 @@ def run_check_retcode(
 
 
 class TransientProcessError(Exception):
-    cmd: Optional[List[str]]
+    cmd: Optional[str]
     returncode: Optional[int]
     msg: Optional[str]
     stdout: Optional[str]
@@ -190,13 +190,16 @@ class TransientProcessError(Exception):
     def __init__(
         self,
         *,
-        cmd: Optional[List[str]] = None,
+        cmd: Optional[Union[str, List[str]]] = None,
         returncode: Optional[int] = None,
         msg: Optional[str] = None,
         stdout: Optional[bytes] = None,
         stderr: Optional[bytes] = None,
     ):
-        self.cmd = cmd
+        if isinstance(cmd, list):
+            self.cmd = " ".join(cmd)
+        else:
+            self.cmd = cmd
         self.returncode = returncode
         self.msg = msg
 

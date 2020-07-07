@@ -87,7 +87,9 @@ class GuestCommand(Command):
 
         result = handle.poll()
         if result != 0:
-            raise RuntimeError(f"Command '{self.cmd}' failed with code {result}")
+            raise utils.TransientProcessError(
+                cmd=self.cmd, returncode=result, stdout=raw_stdout, stderr=raw_stderr
+            )
         else:
             return stdout, stderr
 

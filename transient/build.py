@@ -523,7 +523,7 @@ class ImageBuilder:
                 'mount shm "/mnt/dev/shm" -t tmpfs -o mode=1777,nosuid,nodev',
                 'mount /run "/mnt/run" --bind',
                 'mount tmp "/mnt/tmp" -t tmpfs -o mode=1777,strictatime,nodev,nosuid',
-                "mount /etc/resolv.conf /mnt/etc/resolv.conf --bind",
+                "(mount /etc/resolv.conf /mnt/etc/resolv.conf --bind || cp /etc/resolv.conf /mnt/etc/resolv.conf)",
             ],
             allowfail=True,
         )
