@@ -157,21 +157,29 @@ def step_impl(context, flag):
     context.vm_config["transient-early-args"].append(flag)
 
 
-@given('a guest test file: "{}"')
-@given('a guest directory: "{}"')
+@given('a guest test file: "{guest_path}"')
+@given('a guest directory: "{guest_path}"')
 def step_impl(context, guest_path):
     context.vm_config["guest-path"] = guest_path
 
 
-@given('a test file: "{}/{}"')
-def step_impl(context, host_directory, test_file_name):
-    os.makedirs(host_directory, exist_ok=True)
-    test_file_path = os.path.join(host_directory, test_file_name)
+@given('a test file: "{test_file_path}"')
+def step_impl(context, test_file_path):
+    os.makedirs(os.path.dirname(test_file_path), exist_ok=True)
     open(test_file_path, "w").close()
     context.vm_config["test-file"] = test_file_path
 
 
-@given('a host directory: "{}"')
+@given('a large test file: "{test_file_path}"')
+def step_impl(context, test_file_path):
+    os.makedirs(os.path.dirname(test_file_path), exist_ok=True)
+    with open(test_file_path, "w") as f:
+        for _ in range(100):
+            f.write("\x00" * 1024 * 1024)
+    context.vm_config["test-file"] = test_file_path
+
+
+@given('a host directory: "{host_directory}"')
 def step_impl(context, host_directory):
     context.vm_config["host-directory"] = host_directory
     os.makedirs(host_directory, exist_ok=True)
