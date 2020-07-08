@@ -25,3 +25,9 @@ Scenario: Multiple verbose flags is supported
      When the transient command is run
      Then the return code is 0
       And stderr contains "INFO"
+
+Scenario: Transient is run with no qemu arguments
+    Given a transient vm with no qemu arguments
+      And the vm is prepare-only
+     When the transient command is run
+     Then the return code is 0
