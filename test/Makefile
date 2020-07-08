@@ -14,6 +14,12 @@ docker-ci: docker-behave-ci
 behave: prepare
 	behave
 
+docker-behave-ci-%: prepare
+	behave -i $* --tags=~@skip-in-docker-ci --tags=~@skip-in-ci
+
+behave-ci-%: prepare
+	behave -i $* --tags=~@skip-in-ci
+
 .PHONY: docker-behave-ci
 docker-behave-ci: prepare
 	behave --tags=~@skip-in-docker-ci --tags=~@skip-in-ci

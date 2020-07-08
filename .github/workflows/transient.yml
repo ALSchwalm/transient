@@ -22,8 +22,18 @@ jobs:
       run: |
         make check-types
 
-  Test-Container:
+  Ubuntu-2004-Docker:
     runs-on: ubuntu-18.04
+    strategy:
+      matrix:
+        feature:
+          - cli
+          - build
+          - config_file
+          - copy-in-copy-out
+          - images
+          - persist
+          - ssh_console
     container:
       image: ubuntu:20.04
       env:
@@ -40,13 +50,22 @@ jobs:
         python3 -m pip install -e '.[dev]'
     - name: Run tests
       run: |
-        make test-docker-ci
+        make test-docker-behave-ci-${{ matrix.feature }}.feature
 
-  Test-Multi-Python:
+  Ubuntu-1804-VM:
     runs-on: ubuntu-18.04
     strategy:
       matrix:
         python-version: [3.6, 3.8]
+        feature:
+          - cli
+          - build
+          - config_file
+          - copy-in-copy-out
+          - images
+          - persist
+          - ssh_console
+          - sshfs
     steps:
     - uses: actions/checkout@v2
     - name: Install package dependencies
@@ -63,4 +82,4 @@ jobs:
         python -m pip install -e '.[dev]'
     - name: Run tests
       run: |
-        make test-ci
+        make test-behave-ci-${{ matrix.feature }}.feature
