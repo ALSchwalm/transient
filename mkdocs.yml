@@ -4,10 +4,13 @@ theme: readthedocs
 nav:
     - Overview: index.md
     - Installation: installation.md
-    - 'Command Line Interface':
+    - Command Line Interface:
       - 'Run': cli/run.md
       - 'List': cli/list.md
       - 'Delete': cli/delete.md
+    - Configuration File:
+      - 'Overview': configuration-file/overview.md
+      - 'Comprehensive Example': configuration-file/comprehensive-example.md
     - Feature Details:
       - 'Using Shared Folders': details/shared-folders.md
       - 'Usage with Docker': details/docker.md
