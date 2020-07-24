@@ -12,3 +12,15 @@ Feature: SSH Console
      When the vm runs to completion
      Then the return code is 0
       And stdout contains "TEST_FOLDER_INDICATOR"
+
+  @skip-in-ci
+  Scenario: Run VM with two SSHFS mounts
+    Given a transient vm
+      And a disk image "centos/7:2004.01"
+      And a sshfs mount of "resources/sync:/mnt"
+      And a sshfs mount of "resources:/mnt2"
+      And a ssh command "ls /mnt /mnt2"
+     When the vm runs to completion
+     Then the return code is 0
+      And stdout contains "TEST_FOLDER_INDICATOR"
+      And stdout contains "sync"
