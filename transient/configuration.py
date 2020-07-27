@@ -2,6 +2,7 @@
 """
 
 import logging
+import os
 import toml
 
 from marshmallow import Schema, fields, post_load, pre_load, ValidationError
@@ -199,9 +200,23 @@ def _option_was_set_in_cli(option: Any) -> bool:
     return True
 
 
+def _parse_config_file(config_file_path: str) -> MutableMapping[str, Any]:
+    """Parses the given config file and returns the contents as a dictionary
+    """
+    with open(config_file_path) as file:
+        config_file = file.read()
+
+    try:
+        parsed_config_file = toml.loads(config_file)
+    except toml.TomlDecodeError as error:
+        raise ConfigFileParsingError(error, config_file_path)
+
+    return parsed_config_file
+
+
 def _replace_hyphens_with_underscores_in_dict_keys(
-    dictionary: Dict[Any, Any]
-) -> Dict[Any, Any]:
+    dictionary: Dict[str, Any]
+) -> Dict[str, Any]:
     """Replaces hyphens in the dictionary keys with underscores
 
        This is the expected key format for _TransientConfigSchema
@@ -218,30 +233,39 @@ def _replace_hyphens_with_underscores_in_dict_keys(
     return final_dict
 
 
-def _parse_config_file(config_file_path: str) -> MutableMapping[str, Any]:
-    """Parses the given config file and returns the contents as a dictionary
+def _expand_environment_variables_in_dict_values(
+    dictionary: Dict[str, Any]
+) -> Dict[str, Any]:
+    """Expands environment variables in the strings
     """
-    with open(config_file_path) as file:
-        config_file = file.read()
+    final_dict = {}  # type: Dict[str, Any]
+    for k, v in dictionary.items():
+        # Perform this method recursively for sub-directories
+        if isinstance(v, dict):
+            final_dict[k] = _expand_environment_variables_in_dict_values(v)
+        elif isinstance(v, str):
+            final_dict[k] = os.path.expandvars(v)
+        else:
+            final_dict[k] = v
 
-    try:
-        parsed_config_file = toml.loads(config_file)
-    except toml.TomlDecodeError as error:
-        raise ConfigFileParsingError(error, config_file_path)
+    return final_dict
 
-    return parsed_config_file
+
+def _reformat_dict(dictionary: Dict[str, Any]) -> Dict[str, Any]:
+    """Reformats the dictionary using a formatting-pipeline
+    """
+    return _replace_hyphens_with_underscores_in_dict_keys(
+        _expand_environment_variables_in_dict_values(dictionary)
+    )
 
 
 def _load_config_file(config_file_path: str) -> Config:
     """Reformats and validates the config file
     """
-    parsed_config_file = _parse_config_file(config_file_path)
+    parsed_config = _parse_config_file(config_file_path)
 
-    reformatted_config = _replace_hyphens_with_underscores_in_dict_keys(
-        parsed_config_file["transient"]
-    )
-
-    reformatted_config["qemu_args"] = parsed_config_file["qemu"]["qemu-args"]
+    reformatted_config = _reformat_dict(parsed_config["transient"])
+    reformatted_config["qemu_args"] = parsed_config["qemu"]["qemu-args"]
 
     transient_config_schema = _TransientRunConfigSchema()
 
