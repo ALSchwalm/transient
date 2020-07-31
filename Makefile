@@ -1,5 +1,6 @@
 TRANSIENT_KERNEL=transient/static/transient-kernel
 TRANSIENT_KCONFIG=config/transient-kernel-config
+COMPREHENSIVE_EXAMPLE=docs/configuration-file/comprehensive-example.md
 MAX_LINE_LENGTH?=100
 
 .PHONY: check
@@ -7,15 +8,15 @@ check: check-format check-types
 
 .PHONY: check-format
 check-format:
-	black -l 90 --check transient test
+	black -l 90 --check transient test scripts
 
 .PHONY: check-types
 check-types:
-	mypy --strict transient
+	mypy --strict transient scripts
 
 .PHONY: format
 format:
-	black -l 90 transient test
+	black -l 90 transient test scripts
 
 .PHONY: prep-release
 prep-release: clean
@@ -46,11 +47,18 @@ $(TRANSIENT_KERNEL): $(TRANSIENT_KCONFIG)
 .PHONY: kernel
 kernel: transient/static/transient-kernel
 
+.PHONY: $(COMPREHENSIVE_EXAMPLE)
+$(COMPREHENSIVE_EXAMPLE):
+	scripts/embed_file_into_markdown_template.py \
+		--file-to-embed test/config-files/comprehensive-config \
+		--markdown-template docs/templates/comprehensive-example-template.md \
+		--output-file $@
+
 .PHONY: docs
-docs:
+docs: $(COMPREHENSIVE_EXAMPLE)
 	mkdocs serve
 
 .PHONY: clean
 clean:
-	rm -rf sdist dist
+	rm -rf sdist dist $(COMPREHENSIVE_EXAMPLE)
 	make -C test clean
