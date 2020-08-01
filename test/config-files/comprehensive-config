@@ -34,18 +34,18 @@ copy-in-before   = []
 copy-out-after   = []
 copy-timeout     = 0
 image            = ["centos/7:2004.01"]
-# image_backend    = None
-# image_frontend   = None
-# name             = None
+image_backend    = "$HOME/.local/share/transient/backend"
+image_frontend   = "$HOME/.local/share/transient/frontend"
+name             = "test-vm"
 prepare-only     = true
 qmp-timeout      = 10
 shared-folder    = []
 shutdown-timeout = 20
-# ssh-bin-name     = None
-# ssh-command      = None
+ssh-bin-name     = "/sbin/ssh"
+ssh-command      = "whoami"
 ssh-console      = false
-ssh-port         = 22
-# ssh-user         = None
+ssh-port         = 1337
+ssh-user         = "vagrant"
 ssh-with-serial  = false
 
 
