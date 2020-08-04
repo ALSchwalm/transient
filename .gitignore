@@ -12,6 +12,3 @@ tags
 
 # artifacts produced from testing
 artifacts
-
-# artifacts produced from `make docs`
-docs/configuration-file/comprehensive-example.md
