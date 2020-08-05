@@ -144,7 +144,7 @@ class VagrantImageProtocol(BaseImageProtocol):
 
         box_url = self.__vagrant_box_url(version, box_info)
 
-        print(f"Pulling from vagranthub: {box_name}:{version}")
+        print(f"Pulling from vagrant cloud: {box_name}:{version}")
 
         stream = requests.get(box_url, allow_redirects=True, stream=True)
         logging.debug(f"Response headers: {stream.headers}")

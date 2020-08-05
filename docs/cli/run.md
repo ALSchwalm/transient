@@ -101,7 +101,7 @@ $ transient run \
    -- \
    -nographic -enable-kvm -m 1G
 Unable to find image 'centos/7:2004.01' in backend
-Pulling from vagranthub: centos/7:2004.01
+Pulling from vagrant cloud: centos/7:2004.01
 100% |##############################################|  11.6 MiB/s | 439.1 MiB | Time:  0:00:37
 Download completed. Starting image extraction.
 100% |##############################################| 218.7 MiB/s |   1.1 GiB | Time:  0:00:04
