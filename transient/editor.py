@@ -171,7 +171,9 @@ class ImageEditor:
 
     def _prepare_mount(self) -> None:
         # Activate any volume groups that may exist
-        self.run_command_in_guest(f"vgchange -ay", allowfail=True)
+        self.run_command_in_guest(
+            f"vgchange -ay", allowfail=True, capture_stdout=True, capture_stderr=True
+        )
 
         fstab_contents = self._read_fstab()
         for entry in self._parse_fstab(fstab_contents):
