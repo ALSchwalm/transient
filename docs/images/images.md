@@ -1,4 +1,4 @@
-## Getting Images
+## Getting Existing Images
 
 `transient` supports a number of 'protocols' for retrieving backend images.
 When the user uses the `-image` flag, the argument consists of three parts.

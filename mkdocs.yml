@@ -6,12 +6,16 @@ nav:
     - Installation: installation.md
     - Command Line Interface:
       - 'Run': cli/run.md
+      - 'Build': cli/build.md
       - 'List': cli/list.md
       - 'Delete': cli/delete.md
     - Configuration File:
       - 'Overview': configuration-file/overview.md
       - 'Comprehensive Example': configuration-file/comprehensive-example.md
+    - Images:
+      - 'Getting Existing Images': images/images.md
+      - 'Building Images': images/building.md
+      - 'Imagefile Format': images/format.md
     - Feature Details:
       - 'Using Shared Folders': details/shared-folders.md
       - 'Usage with Docker': details/docker.md
-      - 'Getting Images': details/images.md

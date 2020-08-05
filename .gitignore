@@ -1,7 +1,6 @@
 .mypy_cache/
 venv/
 transient/__pycache__/
-images/
 transient/static/__pycache__/
 transient.egg-info/
 build/
