@@ -1,13 +1,12 @@
 ## Configuration File Overview
 
-In addition to configuring `transient` via the command line interface,
-`transient` can also be configured via a configuration file.
+In addition to configuration via the command line interface, `transient`
+can also be configured via a configuration file. Every flag mentioned in
+[Run](../cli/run.md) can be set in a configuration file using the
+[TOML format](https://github.com/toml-lang/toml). Note that _only_ the
+`run` subcommand supports using a configuration file.
 
-Note that _only_ the `run` subcommand supports using a configuration file.
-
-Every flag mentioned in [Run](../cli/run.md) can be set in a configuration file using the [TOML format](https://github.com/toml-lang/toml) .
-
-For example, the command:
+For example, consider the following command:
 
 ```
 $ transient run \
@@ -17,7 +16,8 @@ $ transient run \
    -nographic -enable-kvm -m 1G
 ```
 
-can be set in a configuration file as:
+The following `transient` configuration file would produce the same behavior when
+executed:
 
 ```
 # transient-config.toml
@@ -36,8 +36,12 @@ qemu-args = [
 ]
 ```
 
-then executed with:
+A `transient` configuration can be supplied to the `run` command using the
+`-config` flag. For example:
 
 ```
 $ transient run -config transient-config.toml
 ```
+
+For a more complete example of a `transient` configuration file, see the
+[Comprehensive Example page](./comprehensive-example.md).
