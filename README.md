@@ -5,9 +5,26 @@ transient
 
 [![Documentation Status](https://readthedocs.org/projects/transient/badge/?version=latest)](https://transient.readthedocs.io/en/latest/?badge=latest)
 
-`transient` is thin wrapper for QEMU that provides additional features like downloading
-disk images, shared folders, and SSH support. Currently `transient` only supports
-[Vagrant](https://www.vagrantup.com/) libvirt images.
+`transient` is thin wrapper around QEMU that provides additional features like downloading
+and building disk images, shared folders, and SSH support.
+
+Motivation
+----------
+
+The primary motivation for the development of `transient` is to have a simple way to
+create short-lived virtual machines for testing and development, particularly kernel
+and hypervisor development. There are many other tools for creating virtual machines,
+such as [vagrant](https://www.vagrantup.com/) or the many [libvirt](https://libvirt.org/)
+based solutions. However, these are almost always very stateful. It can be difficult
+to create virtual machines using these tools in CI environments, as the state may
+not always be appropriately synchronized. Also, these tools can make it more difficult
+to supply an existing kernel/initramfs when booting the virtual machine.
+
+Additionally, almost all linux-based virtualization tools ultimately rely on `qemu`.
+`transient` makes this dependency transparent, allowing the user the entire flexibility
+of QEMU. This can be very helpful, for example, when attempting to setup complex virtual
+networking situations which may be difficult to express in the abstractions provided by
+other tools.
 
 Installation
 ------------
@@ -18,8 +35,8 @@ source, clone this repository and run `pip install -e '.[dev]'` from the project
 root. As always, the usage of python [virtual environments](https://docs.python.org/3/tutorial/venv.html)
 is recommended for a development setup.
 
-`transient` has dependencies on very few packages. On ubuntu, these can be installed
-by running `apt-get install ssh qemu-system-x86 python3-pip`.
+`transient` has very few dependencies. On ubuntu, these can be installed by running
+`apt-get install ssh qemu-system-x86 python3-pip`.
 
 Documentation
 -------------
@@ -63,3 +80,27 @@ transient run \
 
 The `-ssh-console` flag depends on the image having the normal vagrant keypair
 trusted for the `vagrant` user.
+
+Building Images
+---------------
+
+One side-effect of the development of `transient` was to create a Dockefile-like
+declarative file that can be used to build virtual machine disk images. For example,
+the file below would build a Centos 7 image based on the existing `vagrant` image
+`centos/7:2004.01` but with `nano` installed and a hostname change:
+
+```
+FROM centos/7:2004.01
+RUN yum install -y nano
+RUN echo 'myhostname' > /etc/hostname
+```
+
+For additional information on building images, see the
+[Building Images page](https://transient.readthedocs.io/en/latest/images/building/)
+of the docs.
+
+License
+-------
+
+This project is licensed under the terms of the MIT license. See the LICENSE
+file for details
