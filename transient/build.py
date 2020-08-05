@@ -60,10 +60,12 @@ partition: "PARTITION"i PARTITION_NUM partition_size? partition_format? partitio
 PARTITION_NUM: /\d/+
 partition_size: "SIZE"i DISK_SIZE DISK_UNITS
 partition_mount: "MOUNT"i PATH
-partition_format: "FORMAT"i PART_FORMAT
+partition_format: "FORMAT"i PART_FORMAT partition_options?
 partition_flags: "FLAGS"i PART_FLAG ("," PART_FLAG)*
+partition_options: "OPTIONS"i PART_STRING
 PART_FLAG: "BOOT"i | "EFI"i | "BIOS_GRUB"i
 PART_FORMAT: /[^ \t\n\\]/i+
+PART_STRING: /".*?"/
 
 COMMENT: /#[^\n]*/
 
@@ -226,6 +228,7 @@ class DiskInstruction(ImageInstruction):
 class PartitionInstruction(ImageInstruction):
     size: Optional[int]
     format: Optional[str]
+    options: Optional[str]
     mount: Optional[str]
     flags: Optional[List[str]]
     number: int
@@ -238,8 +241,15 @@ class PartitionInstruction(ImageInstruction):
             self.format = format.children[0].value.lower()
             if self.format not in self.__supported_formats():
                 raise RuntimeError(f"Unsupported partition format '{self.format}'")
+
+            options = next(ast.find_data("partition_options"), None)
+            if options is not None:
+                self.options = options.children[0].value.strip('"')
+            else:
+                self.options = ""
         else:
             self.format = None
+            self.options = ""
 
         mount = next(ast.find_data("partition_mount"), None)
         if mount is not None:
@@ -294,7 +304,7 @@ class PartitionInstruction(ImageInstruction):
         if self.format is not None:
             commands.append(
                 editor.GuestCommand(
-                    f"mkfs.{self.format} /dev/sda{self.number}",
+                    f"mkfs.{self.format} {self.options} /dev/sda{self.number}",
                     builder.editor.ssh_config,
                     builder.config.ssh_timeout,
                 )
@@ -308,6 +318,8 @@ class PartitionInstruction(ImageInstruction):
             output += f"SIZE {self.size}MB "
         if self.format is not None:
             output += f"FORMAT {self.format} "
+        if self.options != "":
+            output += f'OPTIONS "{self.options}" '
         if self.mount is not None:
             output += f"MOUNT {self.mount} "
         if self.flags is not None:
