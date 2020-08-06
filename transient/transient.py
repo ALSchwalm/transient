@@ -18,7 +18,18 @@ import subprocess
 import tempfile
 import uuid
 
-from typing import cast, Iterator, Optional, List, Dict, Any, Union, Tuple, TYPE_CHECKING
+from typing import (
+    cast,
+    Iterator,
+    Optional,
+    Sequence,
+    List,
+    Dict,
+    Any,
+    Union,
+    Tuple,
+    TYPE_CHECKING,
+)
 
 # _Environ is declared as generic in stubs but not at runtime. This makes it
 # non-subscriptable and will result in a runtime error. According to the
@@ -39,7 +50,7 @@ class TransientVmState(enum.Enum):
 class TransientVm:
     store: image.ImageStore
     config: configuration.Config
-    vm_images: List[image.FrontendImageInfo]
+    vm_images: Sequence[image.BaseImageInfo]
     ssh_config: Optional[ssh.SshConfig]
     qemu_runner: Optional[qemu.QemuRunner]
     qemu_should_die: bool
@@ -63,6 +74,10 @@ class TransientVm:
             for idx, image_name in enumerate(names)
         ]
 
+    def __use_backend_images(self, names: List[str]) -> List[image.BackendImageInfo]:
+        """Ensure the backend images are download for each image spec in 'names'"""
+        return [self.store.retrieve_image(name) for name in names]
+
     def __needs_ssh(self) -> bool:
         return (
             self.config.ssh_console is True
@@ -76,6 +91,14 @@ class TransientVm:
             self.config.ssh_console is True
             or self.config.ssh_with_serial is True
             or self.config.ssh_command is not None
+        )
+
+    def __is_stateless(self) -> bool:
+        """Checks if the VM does not require any persistent storage on disk"""
+        return (
+            not self.__needs_to_copy_out_files_after_running()
+            and not self.__needs_to_copy_in_files_before_running()
+            and self.config.name is None
         )
 
     def __do_copy_command(self, cmd: List[str], environment: Environ) -> None:
@@ -104,7 +127,7 @@ class TransientVm:
         """Checks if at least one file or directory on the host needs to be copied into the VM
            before starting the VM
         """
-        return self.config.copy_in_before is not None
+        return len(self.config.copy_in_before) > 0
 
     def __copy_in_files(self) -> None:
         """Copies the given files or directories (located on the host) into the VM"""
@@ -129,6 +152,7 @@ class TransientVm:
             raise RuntimeError(f"Absolute path for guest required: {vm_absolute_path}")
 
         for vm_image in self.vm_images:
+            assert isinstance(vm_image, image.FrontendImageInfo)
             assert vm_image.backend is not None
             logging.info(
                 f"Copying from '{host_path}' to '{vm_image.backend.identifier}:{vm_absolute_path}'"
@@ -141,7 +165,7 @@ class TransientVm:
         """Checks if at least one directory on the VM needs to be copied out
            to the host after stopping the VM
         """
-        return self.config.copy_out_after is not None
+        return len(self.config.copy_out_after) > 0
 
     def __copy_out_files(self) -> None:
         """Copies the given files or directories (located on the guest) onto the host"""
@@ -166,6 +190,7 @@ class TransientVm:
             raise RuntimeError(f"Absolute path for guest required: {vm_absolute_path}")
 
         for vm_image in self.vm_images:
+            assert isinstance(vm_image, image.FrontendImageInfo)
             assert vm_image.backend is not None
             logging.info(
                 f"Copying from '{vm_image.backend.identifier}:{vm_absolute_path}' to '{host_path}'"
@@ -176,6 +201,9 @@ class TransientVm:
 
     def __qemu_added_args(self) -> List[str]:
         new_args = ["-name", self.name]
+
+        if self.__is_stateless():
+            new_args.append("-snapshot")
 
         for image in self.vm_images:
             new_args.extend(["-drive", f"file={image.path}"])
@@ -271,9 +299,10 @@ class TransientVm:
         if self.__needs_to_copy_out_files_after_running():
             self.__copy_out_files()
 
-        # If the config name is None, this is a completely temporary VM,
-        # so remove the frontend images
-        if self.config.name is None:
+        # If the config name is None, this is a temporary VM,
+        # so remove any generated frontend images. However, if the
+        # VM is _totally_ stateless, there is nothing to remove
+        if self.config.name is None and not self.__is_stateless():
             logging.info("Cleaning up temporary vm images")
             for image in self.vm_images:
                 self.store.delete_image(image)
@@ -286,8 +315,15 @@ class TransientVm:
     def run(self) -> None:
         self.state = TransientVmState.RUNNING
 
-        # First, download and setup any required disks
-        self.vm_images = self.__create_images(self.config.image)
+        if not self.__is_stateless():
+            # First, download and setup any required disks
+            self.vm_images = self.__create_images(self.config.image)
+        else:
+            # If the VM is completely stateless, we don't need to make our
+            # own frontend images, because we will be using the '-snapshot'
+            # feature to effectively do that. So just ensure the backend
+            # images have been downloaded.
+            self.vm_images = self.__use_backend_images(self.config.image)
 
         if self.__needs_to_copy_in_files_before_running():
             self.__copy_in_files()
