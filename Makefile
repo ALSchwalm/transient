@@ -18,6 +18,16 @@ check-types:
 format:
 	black -l 90 transient test scripts
 
+.PHONY: dev
+dev: venv/.dev-finished
+
+venv/.dev-finished:
+	python3 -m venv venv
+	. venv/bin/activate; \
+	    python3 -m pip install -e '.[dev]'
+	touch venv/.dev-finished
+	@echo "Finished building dev environment. Run '. venv/bin/activate'"
+
 .PHONY: prep-release
 prep-release: clean
 	python setup.py sdist bdist_wheel

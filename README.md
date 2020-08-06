@@ -33,7 +33,8 @@ Installation
 release can be installed with `pip install transient`. To install `transient` from
 source, clone this repository and run `pip install -e '.[dev]'` from the project
 root. As always, the usage of python [virtual environments](https://docs.python.org/3/tutorial/venv.html)
-is recommended for a development setup.
+is recommended for a development setup. The development environment can also be built
+by running `make dev` from the project root.
 
 `transient` has very few dependencies. On ubuntu, these can be installed by running
 `apt-get install ssh qemu-system-x86 python3-pip`.
