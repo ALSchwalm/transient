@@ -6,6 +6,7 @@ import json
 import pathlib
 import re
 import shutil
+import stat
 import subprocess
 
 from . import configuration
@@ -654,6 +655,9 @@ class ImageBuilder:
             destination = os.path.join(self.config.build_dir, f"{self.config.name}.qcow2")
         else:
             destination = self.store.backend_path(image.ImageSpec(self.config.name))
+
+        # Make the new image read-only before moving.
+        os.chmod(new_image, stat.S_IREAD | stat.S_IRGRP | stat.S_IROTH)
         os.rename(new_image, destination)
 
         return destination
