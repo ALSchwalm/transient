@@ -9,7 +9,7 @@ The image name is 'myimage', the protocol is 'http' and the source is the
 flag, the image will be retrieved using the given protocol, and stored
 under the provided name in the backend.
 
-The following image protocols are currently supports:
+The following image protocols are currently supported:
 
 ### Vagrant
 
