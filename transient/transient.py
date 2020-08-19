@@ -1,3 +1,4 @@
+from . import checked_threading
 from . import configuration
 from . import editor
 from . import qemu
@@ -38,6 +39,9 @@ if TYPE_CHECKING:
     Environ = os._Environ[str]
 else:
     Environ = os._Environ
+
+
+MAX_CONCURRENT_SSHFS = 7
 
 
 @enum.unique
@@ -362,6 +366,7 @@ class TransientVm:
             logging.error("QEMU Process has died. Exiting")
             return self.__post_run(qemu_returncode)
 
+        sshfs_threads = []
         for shared_spec in self.config.shared_folder:
             assert self.ssh_config is not None
             local, remote = shared_spec.split(":")
@@ -369,13 +374,25 @@ class TransientVm:
             # The user almost certainly doesn't intend to pass a relative path,
             # so make it absolute
             absolute_local_path = os.path.abspath(local)
-            sshfs.do_sshfs_mount(
-                connect_timeout=self.config.ssh_timeout,
-                ssh_config=self.ssh_config,
-                local_dir=absolute_local_path,
-                remote_dir=remote,
-                local_user=self.__current_user(),
+            sshfs_kwargs = {
+                "connect_timeout": self.config.ssh_timeout,
+                "ssh_config": self.ssh_config,
+                "local_dir": absolute_local_path,
+                "remote_dir": remote,
+                "local_user": self.__current_user(),
+            }
+
+            # Slamming the server with 20 connections at once is a good way to break things:
+            if len(sshfs_threads) > MAX_CONCURRENT_SSHFS:
+                sshfs_threads.pop(0).join()
+
+            sshfs_threads.append(
+                checked_threading.Thread(target=sshfs.do_sshfs_mount, kwargs=sshfs_kwargs)
             )
+            sshfs_threads[-1].start()
+
+        for sshfs_thread in sshfs_threads:
+            sshfs_thread.join()
 
         if self.__needs_ssh_console():
             # Now wait until the QMP connection is established (this should be very fast).
