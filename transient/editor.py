@@ -294,10 +294,10 @@ class ImageEditor:
             return None, None
 
     def copy_in(self, host_path: str, guest_path: str) -> None:
-        ssh.scp(host_path, utils.join_absolute_paths("/mnt", guest_path), self.ssh_config)
+        ssh.rsync(host_path, utils.join_absolute_paths("/mnt", guest_path), self.ssh_config)
 
     def copy_out(self, guest_path: str, host_path: str) -> None:
-        ssh.scp(
+        ssh.rsync(
             utils.join_absolute_paths("/mnt", guest_path),
             host_path,
             self.ssh_config,

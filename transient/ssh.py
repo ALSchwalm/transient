@@ -236,7 +236,6 @@ def scp(
             capture_stderr=capture_stderr,
         )
 
-
 def find_ssh_port_forward(qmp_client: qemu.QmpClient) -> int:
     # Use qmp to determine what port was selected by the kernel
     resp = qmp_client.send_sync(
@@ -260,3 +259,46 @@ def find_ssh_port_forward(qmp_client: qemu.QmpClient) -> int:
         if match is not None:
             return int(match.group(1))
     raise RuntimeError("Unable to locate SSH port")
+
+
+def rsync(
+    source: str,
+    destination: str,
+    config: SshConfig,
+    copy_from: bool = False,
+    capture_stdout: bool = False,
+    capture_stderr: bool = False,
+) -> Tuple[Optional[str], Optional[str]]:
+    if config.user is not None:
+        host = f"{config.user}@{config.host}"
+    else:
+        host = f"{config.host}"
+
+    args = [
+        "--times",
+        "--perms",
+        "--recursive",
+        "--links",
+        f"--port={config.port}",
+        "-e",
+        *config.args,
+    ]
+
+    priv_keys = _prepare_builtin_keys()
+    for key in priv_keys:
+        args.extend(["-i", key])
+
+    if copy_from is False:
+        host += f":{destination}"
+        return utils.run_check_retcode(
+            ["rsync", *args, source, host],
+            capture_stdout=capture_stdout,
+            capture_stderr=capture_stderr,
+        )
+    else:
+        host += f":{source}"
+        return utils.run_check_retcode(
+            ["rsync", *args, host, destination],
+            capture_stdout=capture_stdout,
+            capture_stderr=capture_stderr,
+        )
