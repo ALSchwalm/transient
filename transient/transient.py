@@ -228,13 +228,15 @@ class TransientVm:
                 ssh_bin_name=self.config.ssh_bin_name,
             )
 
+            ssh_net_driver = self.config.ssh_net_driver
+
             # the random localhost port or the user provided port to guest port 22
             new_args.extend(
                 [
                     "-netdev",
                     f"user,id=transient-sshdev,hostfwd=tcp::{ssh_port}-:22",
                     "-device",
-                    "e1000,netdev=transient-sshdev",
+                    f"{ssh_net_driver},netdev=transient-sshdev",
                 ]
             )
 
