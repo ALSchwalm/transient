@@ -159,6 +159,11 @@ def cli_entry(verbose: int) -> None:
     "-ssh-command", "-cmd", type=str, help="Run an ssh command instead of a console",
 )
 @click.option(
+    "-ssh-net-driver",
+    type=str,
+    help="The QEMU virtual network device driver e.g. e1000, rtl8139, virtio-net-pci (default)",
+)
+@click.option(
     "-shutdown-timeout",
     type=int,
     help="The time to wait for shutdown before terminating QEMU",
