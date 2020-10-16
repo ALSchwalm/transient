@@ -29,9 +29,10 @@ venv/.dev-finished:
 	@echo "Finished building dev environment. Run '. venv/bin/activate'"
 
 .PHONY: prep-release
-prep-release: clean
-	python setup.py sdist bdist_wheel
-	twine check dist/*
+prep-release: | clean dev $(COMPREHENSIVE_EXAMPLE)
+	. venv/bin/activate; \
+	    python setup.py sdist bdist_wheel; \
+	    twine check dist/*
 
 .PHONY: upload-test-release
 upload-test-release: prep-release
