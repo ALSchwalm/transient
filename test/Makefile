@@ -1,4 +1,4 @@
-UBUNTU_20_04_URL="http://cdimage.ubuntu.com/ubuntu-base/releases/20.04/release/ubuntu-base-20.04-base-amd64.tar.gz"
+UBUNTU_20_04_URL="http://cdimage.ubuntu.com/ubuntu-base/releases/20.04/release/ubuntu-base-20.04.1-base-amd64.tar.gz"
 UBUNTU_BASE=artifacts/build-dir/ubuntu.tar.gz
 
 .PHONY: all
