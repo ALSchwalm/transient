@@ -95,12 +95,17 @@ def package_file_bytes(key: str) -> bytes:
 def extract_static_file(key: str, destination: str) -> None:
     static_file = package_file_bytes(key)
 
+    directory = os.path.dirname(destination)
+
+    # Ensure the destination directory exists
+    os.makedirs(directory, exist_ok=True)
+
     # Set delete=False because we will be moving the file
-    with tempfile.NamedTemporaryFile(dir=os.path.dirname(destination), delete=False) as f:
+    with tempfile.NamedTemporaryFile(dir=directory, delete=False) as f:
         f.write(static_file)
 
         # The rename is done atomically, so even if we race with another
-        # processes, SSH will definitely get the full file contents
+        # processes, we will definitely get the full file contents
         os.rename(f.name, destination)
 
 
