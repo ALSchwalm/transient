@@ -5,8 +5,8 @@ transient
 
 [![Documentation Status](https://readthedocs.org/projects/transient/badge/?version=latest)](https://transient.readthedocs.io/en/latest/?badge=latest)
 
-`transient` is thin wrapper around QEMU that provides additional features like downloading
-and building disk images, shared folders, and SSH support.
+`transient` is a thin wrapper around QEMU that provides additional features like
+downloading and building disk images, shared folders, and SSH support.
 
 Motivation
 ----------
@@ -36,7 +36,7 @@ root. As always, the usage of python [virtual environments](https://docs.python.
 is recommended for a development setup. The development environment can also be built
 by running `make dev` from the project root.
 
-`transient` has very few dependencies. On ubuntu, these can be installed by running
+`transient` has very few dependencies. On Ubuntu, these can be installed by running
 `apt-get install ssh qemu-system-x86 python3-pip`.
 
 Documentation
