@@ -353,6 +353,7 @@ class TransientVm:
         # `-nographic` mode, which is very surprising.
         self.qemu_runner = qemu.QemuRunner(
             full_qemu_args,
+            bin_name=self.config.qemu_bin_name,
             quiet=qemu_quiet,
             interactive=qemu_interactive,
             qmp_connectable=self.__needs_ssh_console(),

@@ -178,6 +178,7 @@ class _TransientRunConfigSchema(_TransientConfigSchema):
     copy_out_after = fields.List(fields.Str(), missing=[])
     copy_timeout = fields.Int(allow_none=True)
     prepare_only = fields.Bool(missing=False)
+    qemu_bin_name = fields.Str(allow_none=True)
     qemu_args = fields.List(fields.Str(), missing=[])
     qmp_timeout = fields.Int(missing=10, allow_none=True)
     shutdown_timeout = fields.Int(missing=20)
