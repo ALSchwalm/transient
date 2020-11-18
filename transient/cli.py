@@ -169,6 +169,9 @@ def cli_entry(verbose: int) -> None:
     help="The time to wait for shutdown before terminating QEMU",
 )
 @click.option(
+    "-qemu-bin-name", type=str, default="qemu-system-x86_64", help="QEMU binary to use"
+)
+@click.option(
     "-qmp-timeout",
     type=int,
     help="The time in seconds to wait for the QEMU QMP connection to be established",
