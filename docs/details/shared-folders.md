@@ -8,20 +8,18 @@ A shared folder can be created with a guest by specifying `-shared-folder` on th
 `transient run` command line. This will cause the `transient` to perform a series of
 operations:
 
-1. Establish an SSH connection with the guest, using the `-A` flag to forward the
-   authentication agent in to the guest
+1. Establish an SSH connection with the guest
 2. Use the guest's `sshfs` application to mount the requested host folder to the
-   requested guest path
+   requested guest path, piping data between it and the host's `sftp-server`
 
 This logic implies a few requirements for using shared folders in `transient`.
 
 #### Requirements
 
-Because `transient` must be able to connect from the guest to the host with `ssh` (
-unlike the normal `transient` connection, from the host to the guest), the current
-user must be able to `ssh` to `localhost`. That is `ssh localhost` should work.
-This can probably be achieved by simply adding the contents of `~/.ssh/id_rsa.pub`
-to `~/.ssh/authorized_keys`.
+Because `transient` directly runs the host's sftp server, it searches various standard
+locations for `sftp-server`. If the host's server has a nonstandard name or location,
+the argument `-sftp-bin-name` must be used to specify either an absolute path or a
+file name that resides in the system's PATH.
 
 `transient` also requires that the guest image have `sshfs` installed. To build a
 guest image with `sshfs` pre-installed, see [Building Images](../images/building)

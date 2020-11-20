@@ -1,4 +1,3 @@
-from . import checked_threading
 from . import configuration
 from . import editor
 from . import qemu
@@ -16,7 +15,6 @@ import glob
 import json
 import logging
 import os
-import pwd
 import signal
 import subprocess
 import tempfile
@@ -42,9 +40,6 @@ if TYPE_CHECKING:
     Environ = os._Environ[str]
 else:
     Environ = os._Environ
-
-
-MAX_CONCURRENT_SSHFS = 7
 
 
 @enum.unique
@@ -267,6 +262,7 @@ class TransientVm:
             port=self.set_ssh_port,
             user=self.config.ssh_user,
             ssh_bin_name=self.config.ssh_bin_name,
+            sftp_server_bin_name=self.config.sftp_server_bin_name
         )
 
     def __connect_ssh(self) -> int:
@@ -276,9 +272,6 @@ class TransientVm:
 
         conn.wait()
         return conn.returncode
-
-    def __current_user(self) -> str:
-        return pwd.getpwuid(os.getuid()).pw_name
 
     def __qemu_sigchld_handler(self, sig: int, frame: Any) -> None:
         # We register this signal handler after the QEMU start, so these must not be None
@@ -420,7 +413,7 @@ class TransientVm:
         # proc data to our tempfile
         self.__prepare_proc_data()
 
-        sshfs_threads: List[checked_threading.Thread] = []
+        sshfs_threads = []
         for shared_spec in self.config.shared_folder:
             assert self.ssh_config is not None
             local, remote = shared_spec.split(":")
@@ -429,24 +422,17 @@ class TransientVm:
             # so make it absolute
             absolute_local_path = os.path.abspath(local)
             sshfs_kwargs = {
-                "connect_timeout": self.config.ssh_timeout,
+                "ssh_timeout": self.config.ssh_timeout,
                 "ssh_config": self.ssh_config,
                 "local_dir": absolute_local_path,
                 "remote_dir": remote,
-                "local_user": self.__current_user(),
             }
 
-            # Slamming the server with 20 connections at once is a good way to break things:
-            if len(sshfs_threads) > MAX_CONCURRENT_SSHFS:
-                sshfs_threads.pop(0).join()
-
-            sshfs_threads.append(
-                checked_threading.Thread(target=sshfs.do_sshfs_mount, kwargs=sshfs_kwargs)
-            )
+            sshfs_threads.append(sshfs.SshfsThread(**sshfs_kwargs))
             sshfs_threads[-1].start()
 
         for sshfs_thread in sshfs_threads:
-            sshfs_thread.join()
+            sshfs_thread.wait_for_mount()
 
         if self.__needs_ssh_console():
             # Note that we always return the SSH exit code, even if the guest failed to
