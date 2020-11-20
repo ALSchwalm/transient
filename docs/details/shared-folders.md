@@ -23,4 +23,5 @@ user must be able to `ssh` to `localhost`. That is `ssh localhost` should work.
 This can probably be achieved by simply adding the contents of `~/.ssh/id_rsa.pub`
 to `~/.ssh/authorized_keys`.
 
-`transient` also requires that the guest image have `sshfs` installed.
+`transient` also requires that the guest image have `sshfs` installed. To build a
+guest image with `sshfs` pre-installed, see [Building Images](../images/building)
