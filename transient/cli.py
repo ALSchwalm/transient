@@ -165,7 +165,7 @@ def cli_entry(verbose: int) -> None:
 )
 @click.option(
     "-no-virtio-scsi",
-    type=str,
+    is_flag=True,
     help="Use the QEMU default drive interface (ide) instead of virtio-pci-scsi",
 )
 @click.option(
