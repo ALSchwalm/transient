@@ -1,109 +1,144 @@
 import logging
+import os
+import signal
+import shutil
 import subprocess
+import threading
+import inspect
 
 from typing import Optional, List
 
+from . import linux
 from . import ssh
 
+MAX_CONCURRENT_SSHFS = 8
+
 _SSHFS_MAX_RUN_TIME = 2
-_SSHFS_MAX_RUN_TIME_SLOW = 20
 
 
-def do_sshfs_mount(
-    *,
-    connect_timeout: int,
-    local_dir: str,
-    remote_dir: str,
-    local_user: str,
-    local_password: Optional[str] = None,
-    ssh_config: ssh.SshConfig,
-    is_slow: bool = False,
-) -> None:
-
-    sshfs_config = ssh_config.override(
-        args=["-A", "-T", "-o", "LogLevel=ERROR",] + ssh_config.args
+def get_sftp_server(name: str) -> str:
+    # sftp-server isn't on the default PATH. This adds the places it gets installed.
+    path_addon = ":".join(
+        ["/usr/lib/openssh", "/usr/libexec/openssh", "/usr/libexec", "/usr/lib/ssh"]
     )
-    client = ssh.SshClient(sshfs_config)
-    conn = client.connect_piped(timeout=connect_timeout)
+    path = f'{os.environ.get("PATH", "")}:{path_addon}'
 
-    try:
-        sshfs_options = "-o StrictHostKeyChecking=no -o allow_other"
-        sshfs_command = f"sudo -E sshfs {sshfs_options} {local_user}@10.0.2.2:{local_dir} {remote_dir}"
+    server = shutil.which(name, path=path)
+    if server is None:
+        raise RuntimeError(
+            f'"{name}" not found in PATH or usual locations. Try pointing -sftp-bin-name to an SFTP server.'
+        )
+    return server
 
-        logging.info(f"Sending sshfs mount command '{sshfs_command}'")
 
-        sshfs_timeout = _SSHFS_MAX_RUN_TIME
-        if is_slow is True:
-            sshfs_timeout = _SSHFS_MAX_RUN_TIME_SLOW
+class SshfsThread(threading.Thread):
 
-        # This is somewhat gnarly. The core of the issue is that sshfs is a FUSE mount,
-        # so it runs as a process (that gets backgrounded by default). SSH won't close
-        # the connection on its side until "it encounters end-of-file (eof) on the pipes
-        # connecting  to the stdout and stderr of the user program". This typically means
-        # you can do something like 'nohup <cmd> >/dev/null </dev/null 2>&1 &' to close
-        # all handles and ignore any hang ups. However, this doesn't work for SSHFS, as
-        # it spawns other processes that (I guess?) still have an open handle.
-        #
-        # This causes the SSH connetion to hang forever after the logout. Therefore, we
-        # need to close the connection on our end. So the trick here is to wait for some
-        # max time for this process to be done, then inspect the stdout for a sentinel
-        # value indicating that we _did_ get to the point where it should be OK to
-        # terminate the connection.
-        #
-        # See http://www.snailbook.com/faq/background-jobs.auto.html for some more info.
-        _, raw_stderr = conn.communicate(
-            input=f"""
-          set -e
-          sudo mkdir -p {remote_dir}
-          {sshfs_command}
-          echo TRANSIENT_SSHFS_DONE
-          exit
-        """.encode(
-                "utf-8"
-            ),
-            timeout=sshfs_timeout,
+    # Slamming the server with 20 connections at once is a good way to break things:
+    sshfs_sem = threading.Semaphore(MAX_CONCURRENT_SSHFS)
+
+    def __init__(
+        self, ssh_timeout: int, local_dir: str, remote_dir: str, ssh_config: ssh.SshConfig
+    ) -> None:
+        super().__init__(daemon=True)
+
+        self.is_complete = threading.Event()
+        self.exception: Optional[Exception] = None
+
+        self.ssh_timeout = ssh_timeout
+        self.local_dir = local_dir
+        self.remote_dir = remote_dir
+        self.ssh_config = ssh_config
+
+    def wait_for_mount(self) -> None:
+        self.is_complete.wait()
+        if self.exception:
+            raise RuntimeError(f"SSHFS mount failed: {self.exception}")
+
+    def do_mount(self) -> None:
+        sshfs_options = "-o slave,allow_other"
+        sshfs_command = (
+            f"sudo -E sshfs {sshfs_options} :{self.local_dir} {self.remote_dir}"
         )
 
-        # Ensure returncode is set
-        conn.poll()
+        # Because sshfs monopolizes stdout, the progress markers go to stderr
+        ssh_command = inspect.cleandoc(
+            f"""
+            set -e
+            echo TRANSIENT_SSH_COMPLETE >&2
+            sudo mkdir -p {self.remote_dir}
 
-        if conn.returncode == 0:
-            # On some platforms, maybe this does actually terminate. If it does,
-            # then just return, but warn because something weird is probably happening
-            logging.warning("sshfs connection did not cause session hang as expected")
-            return
+            # Cache these paths to speed up the SSHFS step. Pass/fail doesn't matter.
+            which sudo sshfs 2>/dev/null >/dev/null || true
 
-        stderr = raw_stderr.decode("utf-8")
+            echo TRANSIENT_SSHFS_STARTING >&2
+            {sshfs_command}
+            """
+        )
 
-        raise RuntimeError(f"SSHFS mount failed with: {stderr}")
-    except subprocess.TimeoutExpired:
-        # The timeout expired (as expected), but because we 'set -e', this means
-        # we must be in the state where we're hanging after the logout. So kill
-        # the connection from our end, the sshfs process will continue on the
-        # guest side.
-        conn.terminate()
+        sshfs_config = self.ssh_config.override(
+            args=["-T", "-o", "LogLevel=ERROR"] + self.ssh_config.args
+        )
+        client = ssh.SshClient(sshfs_config, command=ssh_command)
 
-        # There is a chance the sshfs process hung, so check for the sentinel text
-        raw_stdout, raw_stderr = conn.communicate()
-        stdout = raw_stdout.decode("utf-8")
-        stderr = raw_stderr.decode("utf-8")
-        if "TRANSIENT_SSHFS_DONE" not in stdout:
-            if is_slow:
-                # We timed out without getting to the 'echo' in the script, even with
-                # extra time. Just give up.
-                raise RuntimeError(f"SSHFS mount timed out: {stderr}")
-            else:
-                logging.warning(
-                    "sshfs mount did not complete. Trying with longer timeout"
-                )
-                # Try again with a longer timeout. The system may just be extremely
-                # slow (like qemu with 1 core and no kvm acceleration)
-                do_sshfs_mount(
-                    connect_timeout=connect_timeout,
-                    local_dir=local_dir,
-                    remote_dir=remote_dir,
-                    local_user=local_user,
-                    local_password=local_password,
-                    ssh_config=ssh_config,
-                    is_slow=True,
-                )
+        sftp_proc = subprocess.Popen(
+            [get_sftp_server(name=sshfs_config.sftp_server_bin_name), "-e"],
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            preexec_fn=lambda: linux.set_death_signal(signal.SIGTERM),
+        )
+
+        with self.sshfs_sem:
+            logging.info(f"Sending sshfs mount command '{sshfs_command}'")
+            ssh_proc = client.connect(
+                timeout=self.ssh_timeout,
+                stdin=sftp_proc.stdout,
+                stdout=sftp_proc.stdin,
+                stderr=subprocess.PIPE,
+            )
+
+            # Everything from here on out simply verifies that nothing went wrong.
+            assert ssh_proc.stderr is not None
+
+            first_stderr_line = ssh_proc.stderr.readline().decode("utf-8")
+            if "TRANSIENT_SSH_COMPLETE" not in first_stderr_line:
+                ssh_proc.kill()
+                stderr = first_stderr_line + ssh_proc.communicate()[1].decode("utf-8")
+                raise RuntimeError(f"SSH connection failed with: {stderr}")
+
+        second_stderr_line = ssh_proc.stderr.readline().decode("utf-8")
+        if "TRANSIENT_SSHFS_STARTING" not in second_stderr_line:
+            ssh_proc.kill()
+            stderr = second_stderr_line + ssh_proc.communicate()[1].decode("utf-8")
+            raise RuntimeError(f"Shared folder prep failed with: {stderr}")
+
+        try:
+            # Now that the SSH connection is established, the SSHFS timeout can be very short
+            stderr = ssh_proc.communicate(timeout=_SSHFS_MAX_RUN_TIME)[1].decode("utf-8")
+        except subprocess.TimeoutExpired:
+            # Because SSHFS is communicating over stdin/out of the ssh connection, SSH
+            # needs to run for as long as the mount exists. Instead of waiting until the
+            # connection is closed, we wait a short time so SSHFS has a chance to fail.
+            # Timing out is expected.
+            pass
+        else:
+            sftp_proc.kill()
+            raise RuntimeError(f"SSHFS mount failed with: {stderr}")
+
+        # Verify that the server didn't die while communicate() waited for the client
+        assert not sftp_proc.poll()
+
+        # Wake up the main thread
+        self.is_complete.set()
+
+        if ssh_proc.wait():
+            stderr = ssh_proc.communicate()[1].decode("utf-8")
+            if "closed by remote host" not in stderr:
+                raise RuntimeError(f"SSHFS mount died with: {stderr}")
+
+    def run(self) -> None:
+        try:
+            self.do_mount()
+        except Exception as e:
+            self.exception = e
+            self.is_complete.set()
+            raise

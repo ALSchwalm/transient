@@ -29,6 +29,7 @@ class SshConfig:
         host: str,
         port: Optional[int] = None,
         ssh_bin_name: Optional[str] = None,
+        sftp_server_bin_name: Optional[str] = None,
         user: Optional[str] = None,
         password: Optional[str] = None,
         args: Optional[List[str]] = None,
@@ -39,6 +40,7 @@ class SshConfig:
         self.password = password
         self.args = args or []
         self.ssh_bin_name = ssh_bin_name or self.__find_ssh_bin_name()
+        self.sftp_server_bin_name = sftp_server_bin_name or "sftp-server"
 
         # Pass these as default args
         self.args.extend(self.__default_ssh_args())

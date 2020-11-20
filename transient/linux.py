@@ -22,5 +22,5 @@ def prctl(option: int, arg2: int = 0, arg3: int = 0, arg4: int = 0, arg5: int = 
 
 
 def set_death_signal(signal: int) -> int:
-    """Send `signal` to this process when the parent dies"""
+    """Send `signal` to this process when the parent thread dies"""
     return prctl(PR_SET_PDEATHSIG, signal)

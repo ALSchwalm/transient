@@ -195,6 +195,7 @@ def cli_entry(verbose: int) -> None:
     type=int,
     help="The maximum time to wait for a copy-in-before or copy-out-after operation to complete",
 )
+@click.option("-sftp-bin-name", type=str, help="SFTP server binary to use")
 @click.option(
     "-shared-folder",
     "-s",
