@@ -9,7 +9,7 @@ from hamcrest import *
 # Wait for a while, as we may be downloading the image as well
 VM_WAIT_TIME = 60 * 10
 if os.getenv("CI") is not None:
-    DEFAULT_TRANSIENT_ARGS = ["-ssh-timeout", "600", "-shutdown-timeout", "500"]
+    DEFAULT_TRANSIENT_ARGS = ["-ssh-timeout", "780", "-shutdown-timeout", "500"]
     DEFAULT_QEMU_ARGS = ["-m", "1G", "-smp", "2"]
 else:
     DEFAULT_TRANSIENT_ARGS = []
