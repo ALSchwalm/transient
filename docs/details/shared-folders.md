@@ -10,12 +10,8 @@ operations:
 
 1. Establish an SSH connection with the guest, using the `-A` flag to forward the
    authentication agent in to the guest
-2. Attempt to use the `sshfs` application to mount the requested host folder to the
+2. Use the guest's `sshfs` application to mount the requested host folder to the
    requested guest path
-3. If this connection fails, `transient` attempts to 'provision' the system by
-   installing the sshfs package. How this works depends on the guest operating
-   system.
-4. After provisioning, attempt the `sshfs` command again
 
 This logic implies a few requirements for using shared folders in `transient`.
 
@@ -27,11 +23,4 @@ user must be able to `ssh` to `localhost`. That is `ssh localhost` should work.
 This can probably be achieved by simply adding the contents of `~/.ssh/id_rsa.pub`
 to `~/.ssh/authorized_keys`.
 
-`transient` also requires that the guest image have `sshfs` installed or be an
-operating system `transient` knows how to 'provision'. Currently the following
-operating systems can be provisioned by `transient`:
-
-- CentOS 7
-- Red Hat Enterprise Linux 7
-
-Other `yum` based distributions may also work.
+`transient` also requires that the guest image have `sshfs` installed.
