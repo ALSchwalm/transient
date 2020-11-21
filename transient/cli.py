@@ -164,6 +164,11 @@ def cli_entry(verbose: int) -> None:
     help="The QEMU virtual network device driver e.g. e1000, rtl8139, virtio-net-pci (default)",
 )
 @click.option(
+    "-no-virtio-scsi",
+    is_flag=True,
+    help="Use the QEMU default drive interface (ide) instead of virtio-pci-scsi",
+)
+@click.option(
     "-shutdown-timeout",
     type=int,
     help="The time to wait for shutdown before terminating QEMU",

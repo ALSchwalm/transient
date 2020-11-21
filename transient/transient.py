@@ -209,8 +209,14 @@ class TransientVm:
         if self.__is_stateless():
             new_args.append("-snapshot")
 
-        for image in self.vm_images:
-            new_args.extend(["-drive", f"file={image.path}"])
+        if self.config.no_virtio_scsi:
+            for image in self.vm_images:
+                new_args.extend(["-drive", f"file={image.path}"])
+        else:
+            new_args.extend(["-device", "virtio-scsi-pci,id=scsi"])
+            for idx, image in enumerate(self.vm_images):
+                new_args.extend(["-drive", f"file={image.path},if=none,id=hd{idx}"])
+                new_args.extend(["-device", f"scsi-hd,drive=hd{idx}"])
 
         if self.__needs_ssh():
             if self.__needs_ssh_console():

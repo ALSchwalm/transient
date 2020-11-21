@@ -70,3 +70,39 @@ Scenario: Use an image with nonexistent base spec
       And a backend "./artifacts/test-backend"
      When the transient command is run
      Then the return code is 1
+
+  Scenario: Use multiple image files
+    Given a transient vm
+      And a disk image "generic/alpine38:v3.0.2"
+      And a disk image "generic/alpine38:v3.0.2"
+      And a ssh command "ls /dev/sd*"
+     When the vm runs to completion
+     Then the return code is 0
+      And stdout contains "sdb"
+
+  Scenario: Use multiple image files without virtio-scsi
+    Given a transient vm
+      And a transient flag "-no-virtio-scsi"
+      And a disk image "generic/alpine38:v3.0.2"
+      And a disk image "generic/alpine38:v3.0.2"
+      And a ssh command "ls /dev/sd*"
+     When the vm runs to completion
+     Then the return code is 0
+      And stdout contains "sdb"
+
+  Scenario: Connects image using virtio-scsi
+    Given a transient vm
+      And a disk image "generic/alpine38:v3.0.2"
+      And a ssh command "ls -l /sys/block/sda"
+     When the vm runs to completion
+     Then the return code is 0
+      And stdout contains "virtio"
+
+  Scenario: Connect image with IDE
+    Given a transient vm
+      And a transient flag "-no-virtio-scsi"
+      And a disk image "generic/alpine38:v3.0.2"
+      And a ssh command "ls -l /sys/block/sda"
+     When the vm runs to completion
+     Then the return code is 0
+      And stdout contains "ata"

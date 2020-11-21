@@ -191,6 +191,7 @@ class _TransientRunConfigSchema(_TransientConfigSchema):
     ssh_console = fields.Bool(missing=False)
     ssh_with_serial = fields.Bool(missing=False)
     shared_folder = fields.List(fields.Str(), missing=[])
+    no_virtio_scsi = fields.Bool(missing=False)
 
 
 def _option_was_set_in_cli(option: Any) -> bool:
