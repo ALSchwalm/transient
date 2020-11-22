@@ -30,7 +30,10 @@ Installation
 ------------
 
 `transient` is available on [PyPI](https://pypi.org/project/transient/), so the latest
-release can be installed with `pip install transient`. To install `transient` from
+release can be installed with `pip install transient`. It is also available from
+[GNU Guix](http://guix.gnu.org/), and can be installed with `guix install python-transient`.
+
+To install `transient` from
 source, clone this repository and run `pip install -e '.[dev]'` from the project
 root. As always, the usage of python [virtual environments](https://docs.python.org/3/tutorial/venv.html)
 is recommended for a development setup. The development environment can also be built
