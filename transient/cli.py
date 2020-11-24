@@ -6,6 +6,8 @@ import sys
 from . import configuration
 from . import build
 from . import image
+from . import scan
+from . import ssh
 from . import transient
 from . import utils
 from . import __version__
@@ -39,11 +41,25 @@ _common_options = [
     ),
 ]
 
+_ssh_options = [
+    click.option("-ssh-user", "-u", type=str, help="User to pass to SSH"),
+    click.option("-ssh-bin-name", type=str, help="SSH binary to use"),
+    click.option(
+        "-ssh-timeout", type=int, help="Time to wait for SSH connection before failing",
+    ),
+    click.option(
+        "-ssh-command", "-cmd", type=str, help="Run an ssh command instead of a console",
+    ),
+]
 
-def with_common_options(func: Callable[..., Any]) -> Callable[..., Any]:
-    for option in reversed(_common_options):
-        func = option(func)
-    return func
+
+def with_options(options: List[Callable[..., Any]]) -> Callable[..., Any]:
+    def inner(func: Callable[..., Any]) -> Callable[..., Any]:
+        for option in reversed(options):
+            func = option(func)
+        return func
+
+    return inner
 
 
 class TransientRunCommand(click.Command):
@@ -117,7 +133,7 @@ def cli_entry(verbose: int) -> None:
 
 
 @click.help_option("-h", "--help")
-@with_common_options
+@with_options(_common_options)
 @click.option(
     "-copy-in-before",
     "-b",
@@ -147,16 +163,9 @@ def cli_entry(verbose: int) -> None:
     is_flag=True,
     help="Show the serial output before SSH connects (implies -ssh)",
 )
-@click.option("-ssh-user", "-u", type=str, help="User to pass to SSH")
-@click.option("-ssh-bin-name", type=str, help="SSH binary to use")
-@click.option(
-    "-ssh-timeout", type=int, help="Time to wait for SSH connection before failing",
-)
+@with_options(_ssh_options)
 @click.option(
     "-ssh-port", type=int, help="Host port the guest port 22 is connected to",
-)
-@click.option(
-    "-ssh-command", "-cmd", type=str, help="Run an ssh command instead of a console",
 )
 @click.option(
     "-ssh-net-driver",
@@ -231,7 +240,7 @@ def run_impl(**kwargs: Any) -> None:
 
 
 @click.help_option("-h", "--help")
-@with_common_options
+@with_options(_common_options)
 @click.option("-force", "-f", help="Do not prompt before deletion", is_flag=True)
 @click.option(
     "-name", type=str, help="Delete images associated with the given vm name",
@@ -278,15 +287,80 @@ def delete_impl(**kwargs: Any) -> None:
 
 
 @click.help_option("-h", "--help")
-@with_common_options
+@click.option(
+    "-name", type=str, help="Connect to a vm with the given name", required=True
+)
+@with_options(_ssh_options)
+@cli_entry.command(name="ssh")
+def ssh_impl(**kwargs: Any) -> None:
+    """Connect to a running VM using SSH"""
+    try:
+        config = configuration.create_transient_ssh_config(kwargs)
+    except configuration.CLIArgumentError as e:
+        print(e, file=sys.stderr)
+        sys.exit(1)
+
+    instances = scan.find_transient_instances(name=config.name, with_ssh=True)
+    if len(instances) > 1:
+        # There shouldn't be instances with the same name, so just take the first and log
+        logging.warning(
+            f"Multiple Transient VMs with name '{config.name}' detected. Using the first found"
+        )
+        instance = instances[0]
+    elif len(instances) == 1:
+        instance = instances[0]
+    else:
+        print(f"No running VMs found with the name '{config.name}'", file=sys.stderr)
+        sys.exit(1)
+
+    ssh_config = ssh.SshConfig(
+        host="127.0.0.1",
+        user=config.ssh_user,
+        ssh_bin_name=config.ssh_bin_name,
+        port=instance.ssh_port,
+    )
+    client = ssh.SshClient(config=ssh_config, command=config.ssh_command)
+    connection = client.connect_stdout(config.ssh_timeout)
+    connection.wait()
+
+
+@cli_entry.group("list")
+@click.pass_context
+def list_command(ctx: Any) -> None:
+    """List information about images or virtual machines"""
+    pass
+
+
+@click.help_option("-h", "--help")
+@click.option("-name", type=str, help="List virtual machines with the given name")
+@click.option("-with-ssh", is_flag=True, help="List virtual machines with ssh available")
+@list_command.command("vm")
+def list_vm_impl(**kwargs: Any) -> None:
+    """List running VM information"""
+    try:
+        config = configuration.create_transient_list_vm_config(kwargs)
+    except configuration.CLIArgumentError as e:
+        print(e, file=sys.stderr)
+        sys.exit(1)
+
+    instances = scan.find_transient_instances(name=config.name, with_ssh=config.with_ssh)
+    if len(instances) == 0:
+        print("No running VMs found matching criteria", file=sys.stderr)
+        sys.exit(1)
+
+    print(scan.format_instance_table(instances))
+
+
+@click.help_option("-h", "--help")
+@with_options(_common_options)
 @click.option(
     "-name", type=str, help="List disks associated with the given vm name",
 )
-@cli_entry.command("list")
-def list_impl(**kwargs: Any) -> None:
+@list_command.command("image")
+def list_image_impl(**kwargs: Any) -> None:
     """List transient disk information"""
     try:
-        config = configuration.create_transient_list_config(kwargs)
+        config = configuration.create_transient_list_image_config(kwargs)
     except configuration.CLIArgumentError as e:
         print(e, file=sys.stderr)
         sys.exit(1)

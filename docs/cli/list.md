@@ -1,13 +1,15 @@
 ## List
 
-The `list` subcommand for `transient` provides a way to list various properties of the
-images in the Disk Frontend and Disk Backend.
+The `list` subcommand for `transient` has two forms. The `list image` command
+provides a way to list various properties of the images in the Disk Frontend
+and Disk Backend. The `list vm` command shows information about running
+`transient`-based virtual machines.
 
-### Usage
+### List Image Usage
 
 ```
-transient list [-h] [-image IMG [IMG ...]] [-image-frontend IMAGE_FRONTEND]
-                    [-image-backend IMAGE_BACKEND] [-name NAME]
+transient list image [-h] [-image IMG [IMG ...]] [-image-frontend IMAGE_FRONTEND]
+                          [-image-backend IMAGE_BACKEND] [-name NAME]
 ```
 
 - `-name NAME`: Find images associated with the provided `NAME`. Unlike the `run`
@@ -26,11 +28,22 @@ find the per-VM image copies. Note: this path defaults to
 find the read-only backing images. Note: this path defaults to
 `~/.local/share/transient/backend`.
 
+### List VM Usage
+
+```
+transient list vm [-h] [-name NAME] [-with-ssh]
+```
+
+- `-name NAME`: Find a running transient instance with the given name.
+- `-with-ssh`: Only display information about virtual machines that have
+an accessible SSH port
+
+
 ### Examples
 
 #### List all images associated with a given VM name:
 ```
-$ transient list -name test-vm
+$ transient list image -name test-vm
 Frontend Images:
 ┌─────────┬─────────────────────────┬──────────┬────────────┬───────────┐
 │ VM Name │ Backend Image           │ Disk Num │  Real Size │ Virt Size │
@@ -45,7 +58,7 @@ Frontend Images:
 
 Note that this includes the frontend images that are backed by that image
 ```
-$ transient list -image centos/7:2004.01
+$ transient list image -image centos/7:2004.01
 Frontend Images:
 ┌─────────┬──────────────────┬──────────┬────────────┬───────────┐
 │ VM Name │ Backend Image    │ Disk Num │  Real Size │ Virt Size │
@@ -63,11 +76,21 @@ Backend Images:
 
 #### List info about specific images associated with a VM name
 ```
-$ transient list -image centos/7:2004.01 -name test-vm
+$ transient list image -image centos/7:2004.01 -name test-vm
 Frontend Images:
 ┌─────────┬──────────────────┬──────────┬────────────┬───────────┐
 │ VM Name │ Backend Image    │ Disk Num │  Real Size │ Virt Size │
 ├─────────┼──────────────────┼──────────┼────────────┼───────────┤
 │ test-vm │ centos/7:2004.01 │        0 │ 110.57 MiB │ 40.00 GiB │
 └─────────┴──────────────────┴──────────┴────────────┴───────────┘
+```
+
+#### List info about a running VM by name
+```
+$ transient list vm -name test-vm
+┌─────────┬────────────────────────────┬────────┬──────────┐
+│ VM Name │ Start Time                 │    PID │ SSH Port │
+├─────────┼────────────────────────────┼────────┼──────────┤
+│ test-vm │ 2020-11-24 14:35:25.529011 │ 745004 │    58095 │
+└─────────┴────────────────────────────┴────────┴──────────┘
 ```

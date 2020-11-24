@@ -142,9 +142,24 @@ class _TransientBuildConfigSchema(_TransientConfigSchema):
     build_dir = fields.Str(allow_none=False)
 
 
-class _TransientListConfigSchema(_TransientConfigSchema):
-    """Defines the schema for the Transient-list configuration and validates
+class _TransientSshConfigSchema(_TransientConfigSchema):
+    """Defines the schema for the Transient-ssh configuration and validates
        the fields during deserialization
+
+       Note that this class is a wrapper to maintain symmetry with the other
+       schemas.
+    """
+
+    name = fields.Str(allow_none=False)
+    ssh_command = fields.Str(allow_none=True)
+    ssh_bin_name = fields.Str(missing="ssh", allow_none=True)
+    ssh_timeout = fields.Int(missing=90, allow_none=True)
+    ssh_user = fields.Str(missing="vagrant", allow_none=True)
+
+
+class _TransientListImageConfigSchema(_TransientConfigSchema):
+    """Defines the schema for the Transient-list-image configuration and
+       validates the fields during deserialization
 
        Note that this class is a wrapper to maintain symmetry with the other
        schemas.
@@ -156,7 +171,19 @@ class _TransientListConfigSchema(_TransientConfigSchema):
     name = fields.Str(allow_none=True)
 
 
-class _TransientDeleteConfigSchema(_TransientListConfigSchema):
+class _TransientListVmConfigSchema(_TransientConfigSchema):
+    """Defines the schema for the Transient-list-vm configuration and
+       validates the fields during deserialization
+
+       Note that this class is a wrapper to maintain symmetry with the other
+       schemas.
+    """
+
+    name = fields.Str(allow_none=True)
+    with_ssh = fields.Bool(missing=False)
+
+
+class _TransientDeleteConfigSchema(_TransientListImageConfigSchema):
     """Defines the schema for the Transient-delete configuration and validates
        the fields during deserialization
     """
@@ -319,11 +346,29 @@ def create_transient_build_config(cli_args: Dict[Any, Any]) -> Config:
     return _create_transient_config_with_schema(cli_args, schema)
 
 
-def create_transient_list_config(cli_args: Dict[Any, Any]) -> Config:
-    """Creates and validates the Config to be used by Transient-list given the
+def create_transient_ssh_config(cli_args: Dict[Any, Any]) -> Config:
+    """Creates and validates the Config to be used by Transient-ssh given the
        CLI arguments
     """
-    schema = _TransientListConfigSchema()
+    schema = _TransientSshConfigSchema()
+
+    return _create_transient_config_with_schema(cli_args, schema)
+
+
+def create_transient_list_image_config(cli_args: Dict[Any, Any]) -> Config:
+    """Creates and validates the Config to be used by Transient-list-image given
+       the CLI arguments
+    """
+    schema = _TransientListImageConfigSchema()
+
+    return _create_transient_config_with_schema(cli_args, schema)
+
+
+def create_transient_list_vm_config(cli_args: Dict[Any, Any]) -> Config:
+    """Creates and validates the Config to be used by Transient-list-vm given
+       the CLI arguments
+    """
+    schema = _TransientListVmConfigSchema()
 
     return _create_transient_config_with_schema(cli_args, schema)
 

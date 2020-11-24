@@ -93,9 +93,9 @@ after shutting down the VM. For example `-copy-out-after path/on/host:/path/on/g
 - `-qemu-bin-name NAME`: Use `NAME` instead of `qemu-system-x86_64` as the QEMU
 binary.
 
-#### Examples
+### Examples
 
-##### Run a CentOS 7 VM with Serial Console
+#### Run a CentOS 7 VM with Serial Console
 
 ```
 $ transient run \
@@ -128,7 +128,7 @@ Kernel 3.10.0-1127.el7.x86_64 on an x86_64
 localhost login:
 ```
 
-##### Run a CentOS 7 VM with SSH
+#### Run a CentOS 7 VM with SSH
 
 ```
 $ transient run \

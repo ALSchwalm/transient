@@ -1,7 +1,7 @@
 Feature: SSH Console
   In order to support CI-style setups where the user wants to run only a
   single command (or only run commands once the system is known to be
-  'fully' booted), transient supports SSH-ing in to the VM.
+  'fully' booted), transient supports using SSH as the VM connection
 
   Scenario: Run VM with a single SSH command
     Given a transient vm
@@ -24,7 +24,6 @@ Feature: SSH Console
       And we wait for the vm to exit
      Then the return code is 0
       And stdout contains "ssh-console working"
-
 
   Scenario: Run VM with SSH and serial console
     Given a transient vm

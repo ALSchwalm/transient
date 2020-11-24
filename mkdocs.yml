@@ -9,6 +9,7 @@ nav:
       - 'Build': cli/build.md
       - 'List': cli/list.md
       - 'Delete': cli/delete.md
+      - 'SSH': cli/ssh.md
     - Configuration File:
       - 'Overview': configuration-file/overview.md
       - 'Comprehensive Example': configuration-file/comprehensive-example.md

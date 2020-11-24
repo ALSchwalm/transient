@@ -1,6 +1,7 @@
+import datetime
 import os
-
 import subprocess
+import time
 from behave import *
 from hamcrest import *
 
@@ -44,6 +45,7 @@ def wait_on_vm(context):
     stdout, stderr = context.handle.communicate(timeout=timeout)
     context.stdout = stdout.decode("utf-8")
     context.stderr = stderr.decode("utf-8")
+    context.returncode = context.handle.returncode
 
 
 @given("a transient vm")
@@ -224,6 +226,49 @@ def step_impl(context):
     run_vm(context)
 
 
+@When('a transient ssh command "{command}" runs on "{name}"')
+def step_impl(context, command, name=None):
+    command = [
+        "transient",
+        "ssh",
+        "-ssh-timeout",
+        str(VM_WAIT_TIME),
+        "-ssh-command",
+        command,
+        "-name",
+        name,
+    ]
+    handle = subprocess.Popen(
+        command, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE
+    )
+    stdout, stderr = handle.communicate(timeout=VM_WAIT_TIME)
+    context.stdout = stdout.decode("utf-8")
+    context.stderr = stderr.decode("utf-8")
+    context.returncode = handle.returncode
+    handle.wait()
+
+
+@when('we wait for the vm named "{name}" to start')
+def step_impl(context, name):
+    start_time = datetime.datetime.now()
+    while (datetime.datetime.now() - start_time) < datetime.timedelta(
+        seconds=VM_WAIT_TIME
+    ):
+        # Call out to 'list' so we know the VM is available to try to
+        # connect to (though ssh may not actually be ready yet).
+        command = ["transient", "list", "vm", "-name", name]
+        handle = subprocess.Popen(
+            command, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE
+        )
+        handle.wait()
+        if handle.returncode != 0:
+            time.sleep(5)
+        else:
+            break
+    else:
+        raise RuntimeError("VM never started")
+
+
 @when("the vm is provided stdin")
 def step_impl(context):
     text = context.text + "\n"
@@ -238,12 +283,17 @@ def step_impl(context):
 
 @then("the return code is {code}")
 def step_impl(context, code):
-    if context.handle.returncode != int(code):
+    if context.returncode != int(code):
         print("command stdout:")
         print(context.stdout)
         print("command stderr:")
         print(context.stderr)
-    assert_that(context.handle.returncode, equal_to(int(code)))
+    assert_that(context.returncode, equal_to(int(code)))
+
+
+@then("the vm is terminated")
+def step_impl(context):
+    context.handle.terminate()
 
 
 @then('stdout contains "{expected_stdout}"')

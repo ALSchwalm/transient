@@ -4,13 +4,16 @@ from . import editor
 from . import qemu
 from . import image
 from . import utils
+from . import scan
 from . import ssh
 from . import sshfs
 from . import static
 
+import base64
 import contextlib
 import enum
 import glob
+import json
 import logging
 import os
 import pwd
@@ -56,6 +59,7 @@ class TransientVm:
     config: configuration.Config
     vm_images: Sequence[image.BaseImageInfo]
     ssh_config: Optional[ssh.SshConfig]
+    set_ssh_port: Optional[int]
     qemu_runner: Optional[qemu.QemuRunner]
     qemu_should_die: bool
 
@@ -68,6 +72,7 @@ class TransientVm:
         self.qemu_should_die = False
         self.name = self.config.name or self.__generate_tmp_name()
         self.state = TransientVmState.WAITING
+        self.set_ssh_port = None
 
     def __generate_tmp_name(self) -> str:
         return str(uuid.uuid4())
@@ -226,10 +231,11 @@ class TransientVm:
                 ssh_port = utils.allocate_random_port()
             else:
                 ssh_port = self.config.ssh_port
+            self.set_ssh_port = ssh_port
 
             self.ssh_config = ssh.SshConfig(
                 host="127.0.0.1",
-                port=ssh_port,
+                port=self.set_ssh_port,
                 user=self.config.ssh_user,
                 ssh_bin_name=self.config.ssh_bin_name,
             )
@@ -324,6 +330,18 @@ class TransientVm:
             raise utils.TransientProcessError(returncode=returncode)
         return None
 
+    def __build_qemu_environment(self) -> Dict[str, str]:
+        env = {scan.SCAN_ENVIRON_SENTINEL: "1"}
+        data = {"name": self.name}
+
+        if self.set_ssh_port is not None:
+            data["ssh_port"] = self.set_ssh_port
+
+        data_json_bytes = json.dumps(data).encode("utf-8")
+        data_encoded = base64.b64encode(data_json_bytes).decode("utf-8")
+        env[scan.SCAN_ENVIRON_DATA] = data_encoded
+        return env
+
     def run(self) -> None:
         self.state = TransientVmState.RUNNING
 
@@ -363,6 +381,7 @@ class TransientVm:
             quiet=qemu_quiet,
             interactive=qemu_interactive,
             qmp_connectable=self.__needs_ssh_console(),
+            env=self.__build_qemu_environment(),
         )
 
         qemu_proc = self.qemu_runner.start()

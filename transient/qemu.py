@@ -142,6 +142,7 @@ class QemuRunner:
     quiet: bool
     interactive: bool
     qmp_client: Optional[QmpClient]
+    env: Optional[Dict[str, str]]
 
     # As far as I can tell, this _has_ to be quoted. Otherwise, it will
     # fail at runtime because I guess something is actually run here and
@@ -157,6 +158,7 @@ class QemuRunner:
         quiet: bool = False,
         interactive: bool = True,
         qmp_connectable: bool = False,
+        env: Optional[Dict[str, str]] = None,
     ) -> None:
         qmp_port = qmp_port or utils.allocate_random_port()
         self.bin_name = bin_name or self.__find_qemu_bin_name()
@@ -165,6 +167,7 @@ class QemuRunner:
         self.proc_handle = None
         self.qmp_client = None
         self.interactive = interactive
+        self.env = env
 
         if qmp_connectable is True:
             self.qmp_client = QmpClient(qmp_port)
@@ -194,6 +197,7 @@ class QemuRunner:
             stdin=stdin,
             stdout=stdout,
             stderr=stderr,
+            env=self.env,
             # Automatically send SIGTERM to this process when the main Transient
             # process dies
             preexec_fn=lambda: linux.set_death_signal(signal.SIGTERM),
