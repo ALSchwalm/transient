@@ -4,6 +4,7 @@ import logging
 import fcntl
 import itertools
 import os
+import stat
 import progressbar  # type: ignore
 import re
 import requests
@@ -64,6 +65,10 @@ class BaseImageProtocol:
             # Now that the entire file is retrieved, atomically move it to the destination.
             # This avoids issues where a process was killed in the middle of retrieval
             os.rename(temp_destination, destination)
+
+            # There is a qemu hotkey to commit a 'snapshot' to the backing file.
+            # Making the backend images read-only prevents this.
+            os.chmod(destination, stat.S_IREAD | stat.S_IRGRP | stat.S_IROTH)
 
     def _do_retrieve_image(
         self, store: "ImageStore", spec: "ImageSpec", destination: IO[bytes]
