@@ -184,6 +184,7 @@ class _TransientRunConfigSchema(_TransientConfigSchema):
     shutdown_timeout = fields.Int(missing=20)
     ssh_net_driver = fields.Str(missing="virtio-net-pci")
     ssh_command = fields.Str(allow_none=True)
+    ssh_key = fields.Str(allow_none=True)
     ssh_bin_name = fields.Str(missing="ssh", allow_none=True)
     ssh_port = fields.Int(allow_none=True)
     ssh_timeout = fields.Int(missing=90, allow_none=True)

@@ -48,6 +48,7 @@ ssh-bin-name     = "/sbin/ssh"
 ssh-command      = "whoami"
 ssh-console      = false
 ssh-port         = 1337
+ssh-key          = "$HOME/.ssh/priv.key"
 ssh-user         = "vagrant"
 ssh-with-serial  = false
 

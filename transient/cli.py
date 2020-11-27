@@ -156,6 +156,9 @@ def cli_entry(verbose: int) -> None:
     "-ssh-port", type=int, help="Host port the guest port 22 is connected to",
 )
 @click.option(
+    "-ssh-key", "-k", type=str, help="Additional private keys to be passed to the environment",
+)
+@click.option(
     "-ssh-command", "-cmd", type=str, help="Run an ssh command instead of a console",
 )
 @click.option(

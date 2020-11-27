@@ -23,6 +23,7 @@ class SshConfig:
     args: List[str]
     user: Optional[str]
     password: Optional[str]
+    key: Optional[str]
 
     def __init__(
         self,
@@ -32,6 +33,7 @@ class SshConfig:
         user: Optional[str] = None,
         password: Optional[str] = None,
         args: Optional[List[str]] = None,
+        key: Optional[str] = None,
     ) -> None:
         self.host = host
         self.port = port if port is not None else 22
@@ -39,6 +41,7 @@ class SshConfig:
         self.password = password
         self.args = args or []
         self.ssh_bin_name = ssh_bin_name or self.__find_ssh_bin_name()
+        self.key = key
 
         # Pass these as default args
         self.args.extend(self.__default_ssh_args())
@@ -87,6 +90,10 @@ class SshClient:
         priv_keys = _prepare_builtin_keys()
         for key in priv_keys:
             args.extend(["-i", key])
+
+        custom_key = self.config.key
+        if custom_key is not None:
+            args.extend(["-i", custom_key])
 
         command = [self.config.ssh_bin_name] + args + [host]
         if user_cmd is not None:

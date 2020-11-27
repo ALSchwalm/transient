@@ -70,6 +70,9 @@ connection with the virtual machine before failing. Defaults to 90 seconds.
 - `-ssh-port PORT`: Connect to port `PORT` on the virtual machine for SSH instead of
 the default 22.
 
+- `-ssh-key KEY_FILE`: Pass an additional custom SSH key to the environment for
+connecting.
+
 - `-ssh-command COMMAND`: Instead of connecting standard input and output to the SSH
 connection with the virtual machine, pass `COMMAND` instead. (e.g., `ssh vagrant@vm-ip COMMAND`)
 
