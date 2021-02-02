@@ -331,7 +331,12 @@ class TransientVm:
         return None
 
     def __build_qemu_environment(self) -> Dict[str, str]:
-        env = {scan.SCAN_ENVIRON_SENTINEL: "1"}
+        env = {
+            # Always add the sentinel value
+            scan.SCAN_ENVIRON_SENTINEL: "1",
+            # Some versions of python don't propagate PATH, so always set it
+            "PATH": os.getenv("PATH"),
+        }
         data = {"name": self.name}
 
         if self.set_ssh_port is not None:
