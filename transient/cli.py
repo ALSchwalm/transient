@@ -300,7 +300,9 @@ def ssh_impl(**kwargs: Any) -> None:
         print(e, file=sys.stderr)
         sys.exit(1)
 
-    instances = scan.find_transient_instances(name=config.name)
+    instances = scan.find_transient_instances(
+        name=config.name, timeout=config.ssh_timeout
+    )
     if len(instances) > 1:
         # There shouldn't be instances with the same name, so just take the first and log
         logging.warning(
@@ -350,7 +352,9 @@ def list_vm_impl(**kwargs: Any) -> None:
         print(e, file=sys.stderr)
         sys.exit(1)
 
-    instances = scan.find_transient_instances(name=config.name, with_ssh=config.with_ssh)
+    instances = scan.find_transient_instances(
+        name=config.name, with_ssh=config.with_ssh, timeout=None
+    )
     if len(instances) == 0:
         print("No running VMs found matching criteria", file=sys.stderr)
         sys.exit(1)

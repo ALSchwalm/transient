@@ -248,27 +248,6 @@ def step_impl(context, command, name=None):
     handle.wait()
 
 
-@when('we wait for the vm named "{name}" to start')
-def step_impl(context, name):
-    start_time = datetime.datetime.now()
-    while (datetime.datetime.now() - start_time) < datetime.timedelta(
-        seconds=VM_WAIT_TIME
-    ):
-        # Call out to 'list' so we know the VM is available to try to
-        # connect to (though ssh may not actually be ready yet).
-        command = ["transient", "list", "vm", "-name", name]
-        handle = subprocess.Popen(
-            command, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE
-        )
-        handle.wait()
-        if handle.returncode != 0:
-            time.sleep(5)
-        else:
-            break
-    else:
-        raise RuntimeError("VM never started")
-
-
 @when("the vm is provided stdin")
 def step_impl(context):
     text = context.text + "\n"
