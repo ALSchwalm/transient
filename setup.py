@@ -38,7 +38,7 @@ setup(
         "dev": [
             "black==19.10b0",
             "mkdocs==1.1.2",
-            "mypy==0.770",
+            "mypy==0.800",
             "PyHamcrest==2.0.2",
             "typing==3.7.4.1",
             "behave==1.2.6",

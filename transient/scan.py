@@ -67,10 +67,10 @@ def find_transient_instances(
             f"find_transient_instances: 'timeout' cannot be specified without either 'name' or 'with_ssh'"
         )
 
-    start_time = time.time()
+    search_start_time = time.time()
 
     instances = []
-    while timeout is None or (time.time() - start_time < timeout):
+    while timeout is None or (time.time() - search_start_time < timeout):
         for proc in os.listdir(_PID_ROOT):
             pid_dir = os.path.join(_PID_ROOT, proc)
             if os.path.isdir(pid_dir) is False:

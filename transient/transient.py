@@ -335,7 +335,7 @@ class TransientVm:
             # Always add the sentinel value
             scan.SCAN_ENVIRON_SENTINEL: "1",
             # Some versions of python don't propagate PATH, so always set it
-            "PATH": os.getenv("PATH"),
+            "PATH": os.getenv("PATH") or "",
         }
         data = {"name": self.name}
 
@@ -399,7 +399,7 @@ class TransientVm:
             logging.error("QEMU Process has died. Exiting")
             return self.__post_run(qemu_returncode)
 
-        sshfs_threads = []
+        sshfs_threads: List[checked_threading.Thread] = []
         for shared_spec in self.config.shared_folder:
             assert self.ssh_config is not None
             local, remote = shared_spec.split(":")

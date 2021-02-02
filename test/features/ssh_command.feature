@@ -17,6 +17,6 @@ Feature: SSH Command
       And the vm is terminated
 
   Scenario: Attempt to connect to a VM that is not running
-     When a transient ssh command "echo ssh-command working" runs on "test-vm"
+     When a transient ssh command "echo ssh-command working" runs on "test-vm" with timeout 30
      Then the return code is 1
       And stderr contains "No running VMs"

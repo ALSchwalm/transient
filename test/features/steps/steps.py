@@ -227,12 +227,13 @@ def step_impl(context):
 
 
 @When('a transient ssh command "{command}" runs on "{name}"')
-def step_impl(context, command, name=None):
+@When('a transient ssh command "{command}" runs on "{name}" with timeout {timeout}')
+def step_impl(context, command, name=None, timeout=None):
     command = [
         "transient",
         "ssh",
         "-ssh-timeout",
-        str(VM_WAIT_TIME),
+        str(timeout or VM_WAIT_TIME),
         "-ssh-command",
         command,
         "-name",
