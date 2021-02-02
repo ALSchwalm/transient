@@ -300,7 +300,7 @@ def ssh_impl(**kwargs: Any) -> None:
         print(e, file=sys.stderr)
         sys.exit(1)
 
-    instances = scan.find_transient_instances(name=config.name, with_ssh=True)
+    instances = scan.find_transient_instances(name=config.name)
     if len(instances) > 1:
         # There shouldn't be instances with the same name, so just take the first and log
         logging.warning(
@@ -311,6 +311,13 @@ def ssh_impl(**kwargs: Any) -> None:
         instance = instances[0]
     else:
         print(f"No running VMs found with the name '{config.name}'", file=sys.stderr)
+        sys.exit(1)
+
+    if instance.ssh_port is None:
+        print(
+            f"Running VM '{config.name}' has no known SSH port. Was it started with '-ssh'?",
+            file=sys.stderr,
+        )
         sys.exit(1)
 
     ssh_config = ssh.SshConfig(
