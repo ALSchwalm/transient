@@ -321,7 +321,7 @@ def ssh_impl(**kwargs: Any) -> None:
     )
     client = ssh.SshClient(config=ssh_config, command=config.ssh_command)
     connection = client.connect_stdout(config.ssh_timeout)
-    connection.wait()
+    sys.exit(connection.wait())
 
 
 @cli_entry.group("list")
@@ -349,6 +349,7 @@ def list_vm_impl(**kwargs: Any) -> None:
         sys.exit(1)
 
     print(scan.format_instance_table(instances))
+    sys.exit(0)
 
 
 @click.help_option("-h", "--help")
