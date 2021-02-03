@@ -42,7 +42,8 @@ setup(
             "PyHamcrest==2.0.2",
             "typing==3.7.4.1",
             "behave==1.2.6",
-            "twine==3.1.1"
+            "twine==3.1.1",
+            "wheel==0.36.2"
         ],
     },
     entry_points={
