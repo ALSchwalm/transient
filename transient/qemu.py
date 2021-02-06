@@ -9,8 +9,10 @@ import signal
 import socket
 import subprocess
 import sys
+import tempfile
 import threading
 import time
+import uuid
 
 from typing import Any, Dict, DefaultDict, List, Optional, Callable, Union
 
@@ -30,8 +32,8 @@ class QmpClient:
     event_callbacks: DefaultDict[str, List[QmpCallback]]
     current_id: int
 
-    def __init__(self, port: int) -> None:
-        self.port = port
+    def __init__(self, socket_path: str) -> None:
+        self.socket_path = socket_path
         self.id_callbacks = collections.defaultdict(list)
         self.event_callbacks = collections.defaultdict(list)
         self.current_id = 0
@@ -46,12 +48,23 @@ class QmpClient:
         self.file.write((json.dumps(msg) + "\r\n").encode("utf-8"))
         self.file.flush()
 
+    def __connect_socket(self) -> socket.socket:
+        sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        sock.connect(self.socket_path)
+
+        # Now that we have bound to the socket, unlink the file so we don't
+        # leave a bunch of random files lying around
+        if os.path.exists(self.socket_path):
+            os.unlink(self.socket_path)
+
+        return sock
+
     def connect(self, timeout: float) -> None:
-        logging.info(f"Connecting to QMP socket at 127.0.0.1:{self.port}")
+        logging.info(f"Connecting to QMP socket at {self.socket_path}")
         start = time.time()
         while time.time() - start < timeout:
             try:
-                self.sock = socket.create_connection(("127.0.0.1", self.port))
+                self.sock = self.__connect_socket()
                 logging.debug("QMP connection established")
 
                 # Make a file object so we can readline. QMP messages will always
@@ -69,11 +82,11 @@ class QmpClient:
                 thread.start()
 
                 return
-            except ConnectionRefusedError:
-                logging.debug("QMP connection refused. Waiting")
+            except FileNotFoundError:
+                logging.debug("QMP unix socket not available. Waiting")
                 time.sleep(_QMP_DELAY_BETWEEN)
         raise ConnectionRefusedError(
-            f"Unable to connect to QMP socket at 127.0.0.1:{self.port}"
+            f"Unable to connect to QMP socket at {self.socket_path}"
         )
 
     def __start(self) -> None:
@@ -143,6 +156,7 @@ class QemuRunner:
     interactive: bool
     qmp_client: Optional[QmpClient]
     env: Optional[Dict[str, str]]
+    qmp_socket_path: Optional[str]
 
     # As far as I can tell, this _has_ to be quoted. Otherwise, it will
     # fail at runtime because I guess something is actually run here and
@@ -154,13 +168,11 @@ class QemuRunner:
         args: List[str],
         *,
         bin_name: Optional[str] = None,
-        qmp_port: Optional[int] = None,
         quiet: bool = False,
         interactive: bool = True,
         qmp_connectable: bool = False,
         env: Optional[Dict[str, str]] = None,
     ) -> None:
-        qmp_port = qmp_port or utils.allocate_random_port()
         self.bin_name = bin_name or self.__find_qemu_bin_name()
         self.quiet = quiet
         self.args = args
@@ -168,13 +180,19 @@ class QemuRunner:
         self.qmp_client = None
         self.interactive = interactive
         self.env = env
+        self.qmp_socket_path = None
 
         if qmp_connectable is True:
-            self.qmp_client = QmpClient(qmp_port)
-            self.args.extend(self.__default_qmp_args(qmp_port))
+            self.qmp_socket_path = self.__generate_qmp_socket_path()
+            self.qmp_client = QmpClient(self.qmp_socket_path)
+            self.args.extend(self.__default_qmp_args(self.qmp_socket_path))
 
-    def __default_qmp_args(self, port: int) -> List[str]:
-        return ["-qmp", f"tcp:127.0.0.1:{port},server,nowait"]
+    def __generate_qmp_socket_path(self) -> str:
+        id = str(uuid.uuid4())
+        return os.path.join(tempfile.gettempdir(), f"transient.{id}")
+
+    def __default_qmp_args(self, socket_path: str) -> List[str]:
+        return ["-qmp", f"unix:{socket_path},server,nowait"]
 
     def __find_qemu_bin_name(self) -> str:
         return "qemu-system-x86_64"
