@@ -17,6 +17,7 @@ import json
 import logging
 import os
 import pwd
+import re
 import signal
 import subprocess
 import tempfile
@@ -59,7 +60,6 @@ class TransientVm:
     config: configuration.Config
     vm_images: Sequence[image.BaseImageInfo]
     ssh_config: Optional[ssh.SshConfig]
-    set_ssh_port: Optional[int]
     qemu_runner: Optional[qemu.QemuRunner]
     qemu_should_die: bool
 
@@ -72,7 +72,6 @@ class TransientVm:
         self.qemu_should_die = False
         self.name = self.config.name or self.__generate_tmp_name()
         self.state = TransientVmState.WAITING
-        self.set_ssh_port = None
 
     def __generate_tmp_name(self) -> str:
         return str(uuid.uuid4())
@@ -228,17 +227,10 @@ class TransientVm:
                 new_args.extend(["-serial", "stdio", "-display", "none"])
 
             if self.config.ssh_port is None:
-                ssh_port = utils.allocate_random_port()
+                # If the user didn't specify one, let the kernel pick
+                ssh_port = 0
             else:
                 ssh_port = self.config.ssh_port
-            self.set_ssh_port = ssh_port
-
-            self.ssh_config = ssh.SshConfig(
-                host="127.0.0.1",
-                port=self.set_ssh_port,
-                user=self.config.ssh_user,
-                ssh_bin_name=self.config.ssh_bin_name,
-            )
 
             ssh_net_driver = self.config.ssh_net_driver
 
@@ -254,10 +246,50 @@ class TransientVm:
 
         return new_args
 
+    def __find_ssh_port_forward(self, info_usernet: str) -> int:
+        for line in info_usernet.split("\n"):
+            match = re.match(
+                r"""
+                       \s+TCP\[HOST_FORWARD\]  # Match only a HOST_FORWARD line
+                       (?:\s+\S+){,2}          # Skip the first two groups
+                       \s+(\d+)                # Capture the host port being forwarded
+                       \s+\S+\s+22\s+          # But only match if the destination is 22
+            """,
+                line,
+                re.VERBOSE,
+            )
+            if match is not None:
+                return int(match.group(1))
+        raise RuntimeError("Unable to locate SSH port")
+
+    def __prepare_ssh(self) -> None:
+        # Wait until the QMP connection is established (this should be very fast).
+        # We must do this _before_ using ssh, as we use QMP to get the ssh port
+        assert self.qemu_runner is not None
+        assert self.qemu_runner.qmp_client is not None
+        self.qemu_runner.qmp_client.connect(self.config.qmp_timeout)
+
+        if self.config.ssh_port:
+            ssh_port = self.config.ssh_port
+        else:
+            # Use qmp to determine what port was selected by the kernel
+            resp = self.qemu_runner.qmp_client.send_sync(
+                {
+                    "execute": "human-monitor-command",
+                    "arguments": {"command-line": "info usernet"},
+                }
+            )["return"]
+            ssh_port = self.__find_ssh_port_forward(resp)
+
+        self.ssh_config = ssh.SshConfig(
+            host="127.0.0.1",
+            port=ssh_port,
+            user=self.config.ssh_user,
+            ssh_bin_name=self.config.ssh_bin_name,
+        )
+
     def __connect_ssh(self) -> int:
         assert self.ssh_config is not None
-        assert self.qemu_runner is not None
-
         client = ssh.SshClient(config=self.ssh_config, command=self.config.ssh_command)
         conn = client.connect_stdout(timeout=self.config.ssh_timeout)
 
@@ -339,9 +371,6 @@ class TransientVm:
         }
         data = {"name": self.name}
 
-        if self.set_ssh_port is not None:
-            data["ssh_port"] = self.set_ssh_port
-
         data_json_bytes = json.dumps(data).encode("utf-8")
         data_encoded = base64.b64encode(data_json_bytes).decode("utf-8")
         env[scan.SCAN_ENVIRON_DATA] = data_encoded
@@ -385,7 +414,7 @@ class TransientVm:
             bin_name=self.config.qemu_bin_name,
             quiet=qemu_quiet,
             interactive=qemu_interactive,
-            qmp_connectable=self.__needs_ssh_console(),
+            qmp_connectable=self.__needs_ssh(),
             env=self.__build_qemu_environment(),
         )
 
@@ -398,6 +427,9 @@ class TransientVm:
         if qemu_returncode is not None:
             logging.error("QEMU Process has died. Exiting")
             return self.__post_run(qemu_returncode)
+
+        if self.__needs_ssh():
+            self.__prepare_ssh()
 
         sshfs_threads: List[checked_threading.Thread] = []
         for shared_spec in self.config.shared_folder:
@@ -428,10 +460,6 @@ class TransientVm:
             sshfs_thread.join()
 
         if self.__needs_ssh_console():
-            # Now wait until the QMP connection is established (this should be very fast).
-            assert self.qemu_runner.qmp_client is not None
-            self.qemu_runner.qmp_client.connect(self.config.qmp_timeout)
-
             # Note that we always return the SSH exit code, even if the guest failed to
             # shut down. This ensures the shutdown_timeout=0 case is handled as expected.
             # (i.e., it returns the SSH code instead of a QEMU error)
