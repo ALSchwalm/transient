@@ -7,6 +7,7 @@ import progressbar  # type: ignore
 import socket
 import subprocess
 import tempfile
+import uuid
 
 try:
     import importlib.resources as pkg_resources
@@ -62,7 +63,12 @@ def allocate_random_port() -> int:
     return cast(int, addr[1])
 
 
-_XDG_FALLBACK_DATA_PATH = "/tmp"
+def generate_unix_socket_path() -> str:
+    id = str(uuid.uuid4())
+    return os.path.join(tempfile.gettempdir(), f"transient.{id}")
+
+
+_XDG_FALLBACK_DATA_PATH = tempfile.gettempdir()
 
 
 def xdg_data_home() -> str:

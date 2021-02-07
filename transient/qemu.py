@@ -12,15 +12,15 @@ import sys
 import tempfile
 import threading
 import time
-import uuid
 
-from typing import Any, Dict, DefaultDict, List, Optional, Callable, Union
+from typing import Any, Dict, DefaultDict, List, Optional, Callable, Union, Sequence
 
 from . import linux
 from . import utils
 
 _QMP_DELAY_BETWEEN = 0.2
 QMP_DEFAULT_SYNC_TIME = 5
+QMP_DEFAULT_TIMEOUT = 10
 QmpMessage = Dict[Any, Any]
 QmpCallback = Callable[[QmpMessage], None]
 
@@ -59,7 +59,7 @@ class QmpClient:
 
         return sock
 
-    def connect(self, timeout: float) -> None:
+    def connect(self, timeout: float = QMP_DEFAULT_TIMEOUT) -> None:
         logging.info(f"Connecting to QMP socket at {self.socket_path}")
         start = time.time()
         while time.time() - start < timeout:
@@ -171,7 +171,9 @@ class QemuRunner:
         quiet: bool = False,
         interactive: bool = True,
         qmp_connectable: bool = False,
+        qmp_socket_path: Optional[str] = None,
         env: Optional[Dict[str, str]] = None,
+        pass_fds: Optional[Sequence[int]] = tuple(),
     ) -> None:
         self.bin_name = bin_name or self.__find_qemu_bin_name()
         self.quiet = quiet
@@ -180,16 +182,16 @@ class QemuRunner:
         self.qmp_client = None
         self.interactive = interactive
         self.env = env
-        self.qmp_socket_path = None
+        self.pass_fds = pass_fds
+
+        if qmp_socket_path is not None:
+            self.qmp_socket_path = qmp_socket_path
+        else:
+            self.qmp_socket_path = utils.generate_unix_socket_path()
 
         if qmp_connectable is True:
-            self.qmp_socket_path = self.__generate_qmp_socket_path()
             self.qmp_client = QmpClient(self.qmp_socket_path)
             self.args.extend(self.__default_qmp_args(self.qmp_socket_path))
-
-    def __generate_qmp_socket_path(self) -> str:
-        id = str(uuid.uuid4())
-        return os.path.join(tempfile.gettempdir(), f"transient.{id}")
 
     def __default_qmp_args(self, socket_path: str) -> List[str]:
         return ["-qmp", f"unix:{socket_path},server,nowait"]
@@ -219,6 +221,7 @@ class QemuRunner:
             # Automatically send SIGTERM to this process when the main Transient
             # process dies
             preexec_fn=lambda: linux.set_death_signal(signal.SIGTERM),
+            pass_fds=self.pass_fds,
         )
 
         return self.proc_handle

@@ -1,6 +1,7 @@
 import copy
 import logging
 import os
+import re
 import signal
 import subprocess
 import time
@@ -10,6 +11,7 @@ from typing import Optional, List, IO, Any, Union, Dict, Tuple
 from . import linux
 from . import utils
 from . import static
+from . import qemu
 
 SSH_CONNECTION_WAIT_TIME = 30
 SSH_CONNECTION_TIME_BETWEEN_TRIES = 2
@@ -227,3 +229,28 @@ def scp(
             capture_stdout=capture_stdout,
             capture_stderr=capture_stderr,
         )
+
+
+def find_ssh_port_forward(qmp_client: qemu.QmpClient) -> int:
+    # Use qmp to determine what port was selected by the kernel
+    resp = qmp_client.send_sync(
+        {
+            "execute": "human-monitor-command",
+            "arguments": {"command-line": "info usernet"},
+        }
+    )["return"]
+
+    for line in resp.split("\n"):
+        match = re.match(
+            r"""
+            \s+TCP\[HOST_FORWARD\]  # Match only a HOST_FORWARD line
+            (?:\s+\S+){,2}          # Skip the first two groups
+            \s+(\d+)                # Capture the host port being forwarded
+            \s+\S+\s+22\s+          # But only match if the destination is 22
+            """,
+            line,
+            re.VERBOSE,
+        )
+        if match is not None:
+            return int(match.group(1))
+    raise RuntimeError("Unable to locate SSH port")

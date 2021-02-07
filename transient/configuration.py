@@ -6,8 +6,9 @@ import os
 import toml
 
 from marshmallow import Schema, fields, post_load, pre_load, ValidationError
-
 from typing import Any, Dict, List, MutableMapping, Optional
+
+from . import qemu
 
 
 class ConfigFileParsingError(Exception):
@@ -135,7 +136,7 @@ class _TransientBuildConfigSchema(_TransientConfigSchema):
 
     image_backend = fields.Str(allow_none=True)
     name = fields.Str(allow_none=True)
-    qmp_timeout = fields.Int(missing=10, allow_none=True)
+    qmp_timeout = fields.Int(missing=qemu.QMP_DEFAULT_TIMEOUT, allow_none=True)
     ssh_timeout = fields.Int(missing=90, allow_none=True)
     local = fields.Bool(missing=False)
     file = fields.Str(allow_none=True)
@@ -207,7 +208,7 @@ class _TransientRunConfigSchema(_TransientConfigSchema):
     prepare_only = fields.Bool(missing=False)
     qemu_bin_name = fields.Str(allow_none=True)
     qemu_args = fields.List(fields.Str(), missing=[])
-    qmp_timeout = fields.Int(missing=10, allow_none=True)
+    qmp_timeout = fields.Int(missing=qemu.QMP_DEFAULT_TIMEOUT, allow_none=True)
     shutdown_timeout = fields.Int(missing=20)
     ssh_net_driver = fields.Str(missing="virtio-net-pci")
     ssh_command = fields.Str(allow_none=True)

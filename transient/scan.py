@@ -13,10 +13,11 @@ from typing import (
 )
 
 from . import ssh
+from . import qemu
 
 _PID_ROOT = "/proc"
+SCAN_DATA_FD = "__TRANSIENT_DATA_FD"
 SCAN_ENVIRON_SENTINEL = "__TRANSIENT_PROCESS"
-SCAN_ENVIRON_DATA = "__TRANSIENT_DATA"
 
 
 class TransientInstance:
@@ -48,6 +49,11 @@ def _read_pid_environ(pid_dir: str) -> Dict[str, str]:
 
 def _read_pid_start_time(pid_dir: str) -> datetime.datetime:
     return datetime.datetime.fromtimestamp(os.stat(pid_dir).st_ctime)
+
+
+def _read_pid_data(pid_dir: str, data_fd: int) -> Any:
+    with open(os.path.join(pid_dir, "fd", str(data_fd))) as f:
+        return json.loads(base64.b64decode(f.read()))
 
 
 def find_transient_instances(
@@ -85,7 +91,14 @@ def find_transient_instances(
 
             start_time = _read_pid_start_time(pid_dir)
 
-            data = json.loads(base64.b64decode(environ[SCAN_ENVIRON_DATA]))
+            try:
+                data = _read_pid_data(pid_dir, int(environ[SCAN_DATA_FD]))
+            except json.decoder.JSONDecodeError:
+                # A decode error will happen if the entry is scanned between the
+                # time the transient instances starts and the data fd is filled
+                # with the actual data. Ignore the entry in this case.
+                continue
+
             if name is not None and ("name" not in data or data["name"] != name):
                 continue
             if with_ssh is True and "ssh_port" not in data:
