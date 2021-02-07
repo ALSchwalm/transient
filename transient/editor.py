@@ -108,12 +108,13 @@ class ImageEditor:
         self.path = path
         self.skip_mount = skip_mount
 
-        self.ssh_config = ssh.SshConfig(
-            host="127.0.0.1", port=utils.allocate_random_port(), user="root"
-        )
-
     def edit(self) -> "ImageEditor":
-        self.runner = self._spawn_qemu(self.path, self.ssh_config.port)
+        self.runner = self._spawn_qemu(self.path)
+        assert self.runner.qmp_client is not None
+
+        ssh_port = ssh.find_ssh_port_forward(self.runner.qmp_client)
+
+        self.ssh_config = ssh.SshConfig(host="127.0.0.1", port=ssh_port, user="root")
 
         if self.skip_mount is True:
             return self
@@ -212,7 +213,7 @@ class ImageEditor:
 
         return sorted(entries, key=sort_key)
 
-    def _spawn_qemu(self, disk: str, ssh_port: int) -> qemu.QemuRunner:
+    def _spawn_qemu(self, disk: str) -> qemu.QemuRunner:
         with utils.package_file_path(
             "transient-kernel"
         ) as kernel, utils.package_file_path("transient-initramfs") as initramfs:
@@ -252,7 +253,7 @@ class ImageEditor:
                     "scsi-hd,drive=hd0",
                     # Expose the SSH device
                     "-netdev",
-                    f"user,id=transient-sshdev,hostfwd=tcp::{ssh_port}-:22",
+                    f"user,id=transient-sshdev,hostfwd=tcp::0-:22",
                     "-device",
                     "virtio-net-pci,netdev=transient-sshdev",
                 ],

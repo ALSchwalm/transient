@@ -51,18 +51,6 @@ def format_bytes(size: float) -> str:
     return "{:.2f} {}".format(size, labels[n])
 
 
-def allocate_random_port() -> int:
-    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-
-    # Binding to port 0 causes the kernel to allocate a port for us. Because
-    # it won't reuse that port until is _has_ to, this can safely be used
-    # as (for example) the ssh port for the guest and it 'should' be race-free
-    s.bind(("", 0))
-    addr = s.getsockname()
-    s.close()
-    return cast(int, addr[1])
-
-
 def generate_unix_socket_path() -> str:
     id = str(uuid.uuid4())
     return os.path.join(tempfile.gettempdir(), f"transient.{id}")
