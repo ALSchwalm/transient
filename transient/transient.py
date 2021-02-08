@@ -353,16 +353,10 @@ class TransientVm:
         self.data_tempfile.write(base64.b64encode(data_json_bytes))
 
     def __build_qemu_environment(self) -> Dict[str, str]:
-        env = {
-            # Always add the sentinel value
-            scan.SCAN_ENVIRON_SENTINEL: "1",
-            # Store the file descriptor other processes can use to read the data
-            scan.SCAN_DATA_FD: str(self.data_tempfile.fileno()),
-            # Some versions of python don't propagate PATH, so always set it
-            "PATH": os.getenv("PATH") or "",
-        }
-
-        return env
+        qemu_env = os.environ.copy()
+        qemu_env[scan.SCAN_ENVIRON_SENTINEL] = "1"
+        qemu_env[scan.SCAN_DATA_FD] = str(self.data_tempfile.fileno())
+        return qemu_env
 
     def run(self) -> None:
         self.state = TransientVmState.RUNNING
