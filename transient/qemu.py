@@ -13,7 +13,7 @@ import tempfile
 import threading
 import time
 
-from typing import Any, Dict, DefaultDict, List, Optional, Callable, Union, Sequence
+from typing import Any, Dict, DefaultDict, List, Optional, Callable, Union, Sequence, cast
 
 from . import linux
 from . import utils
@@ -48,6 +48,12 @@ class QmpClient:
         self.file.write((json.dumps(msg) + "\r\n").encode("utf-8"))
         self.file.flush()
 
+    def __recv_msg(self) -> Optional[QmpMessage]:
+        msg_json = self.file.readline()
+        if msg_json is None or msg_json == b"":
+            return None
+        return cast(QmpMessage, json.loads(msg_json))
+
     def __connect_socket(self) -> socket.socket:
         sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
         sock.connect(self.socket_path)
@@ -72,14 +78,18 @@ class QmpClient:
                 # cannot set the socket to be non-blocking if we do this.
                 self.file = self.sock.makefile("rwb")
 
-                # Go ahead and enable sending commands
-                self.__send_msg({"execute": "qmp_capabilities"})
+                # Read the server hello (and block until we get one)
+                server_hello = self.__recv_msg()
+                logging.debug(f"Received server hello: {server_hello}")
 
                 # Start and drop this reference. Because the thread is a daemon it will
                 # be killed when python dies
                 thread = threading.Thread(target=self.__start)
                 thread.daemon = True
                 thread.start()
+
+                # Go ahead and enable sending commands
+                self.send_sync({"execute": "qmp_capabilities"})
 
                 return
             except FileNotFoundError:
@@ -91,11 +101,10 @@ class QmpClient:
 
     def __start(self) -> None:
         while True:
-            msg_json = self.file.readline()
-            if msg_json is None or msg_json == b"":
+            msg = self.__recv_msg()
+            if msg is None:
                 logging.debug("QEMU closed QMP connection")
                 return
-            msg = json.loads(msg_json)
             logging.debug(f"Received QMP message: {msg}")
             if "id" in msg:
                 for callback in self.id_callbacks[msg["id"]]:
