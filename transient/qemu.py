@@ -19,7 +19,7 @@ from . import linux
 from . import utils
 
 _QMP_DELAY_BETWEEN = 0.2
-QMP_DEFAULT_SYNC_TIME = 5
+QMP_DEFAULT_SYNC_TIME = 10
 QMP_DEFAULT_TIMEOUT = 10
 QmpMessage = Dict[Any, Any]
 QmpCallback = Callable[[QmpMessage], None]
