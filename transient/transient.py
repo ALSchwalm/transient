@@ -161,15 +161,16 @@ class TransientVm:
         if not vm_absolute_path.startswith("/"):
             raise RuntimeError(f"Absolute path for guest required: {vm_absolute_path}")
 
-        for vm_image in self.vm_images:
-            assert isinstance(vm_image, image.FrontendImageInfo)
-            assert vm_image.backend is not None
-            logging.info(
-                f"Copying from '{host_path}' to '{vm_image.backend.identifier}:{vm_absolute_path}'"
-            )
+        # For now copy only to the first "-image" specified.
+        vm_image = self.vm_images[0]
+        assert isinstance(vm_image, image.FrontendImageInfo)
+        assert vm_image.backend is not None
+        logging.info(
+            f"Copying from '{host_path}' to '{vm_image.backend.identifier}:{vm_absolute_path}'"
+        )
 
-            with editor.ImageEditor(self.config, vm_image.path) as edit:
-                edit.copy_in(host_path, vm_absolute_path)
+        with editor.ImageEditor(self.config, vm_image.path) as edit:
+            edit.copy_in(host_path, vm_absolute_path)
 
     def __needs_to_copy_out_files_after_running(self) -> bool:
         """Checks if at least one directory on the VM needs to be copied out
@@ -199,15 +200,16 @@ class TransientVm:
         if not vm_absolute_path.startswith("/"):
             raise RuntimeError(f"Absolute path for guest required: {vm_absolute_path}")
 
-        for vm_image in self.vm_images:
-            assert isinstance(vm_image, image.FrontendImageInfo)
-            assert vm_image.backend is not None
-            logging.info(
-                f"Copying from '{vm_image.backend.identifier}:{vm_absolute_path}' to '{host_path}'"
-            )
+        # For now copy only to the first "-image" specified.
+        vm_image = self.vm_images[0]
+        assert isinstance(vm_image, image.FrontendImageInfo)
+        assert vm_image.backend is not None
+        logging.info(
+            f"Copying from '{vm_image.backend.identifier}:{vm_absolute_path}' to '{host_path}'"
+        )
 
-            with editor.ImageEditor(self.config, vm_image.path) as edit:
-                edit.copy_out(vm_absolute_path, host_path)
+        with editor.ImageEditor(self.config, vm_image.path) as edit:
+            edit.copy_out(vm_absolute_path, host_path)
 
     def __qemu_added_args(self) -> List[str]:
         new_args = ["-name", self.name]
