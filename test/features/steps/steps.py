@@ -1,6 +1,7 @@
 import datetime
 import os
 import subprocess
+import tempfile
 import time
 from behave import *
 from hamcrest import *
@@ -30,8 +31,16 @@ def build_command(context):
 def run_vm(context):
     command = build_command(context)
     print(command)
+
+    # Use temporary files rather than PIPE, because it may fill and block
+    # before we start reading
+    context.raw_stdout = tempfile.TemporaryFile("wb+", buffering=0)
+    context.raw_stderr = tempfile.TemporaryFile("wb+", buffering=0)
     handle = subprocess.Popen(
-        command, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE
+        command,
+        stdin=subprocess.PIPE,
+        stdout=context.raw_stdout,
+        stderr=context.raw_stderr,
     )
     context.handle = handle
     return context.handle
@@ -42,9 +51,11 @@ def wait_on_vm(context):
         timeout = context.wait_time
     else:
         timeout = VM_WAIT_TIME
-    stdout, stderr = context.handle.communicate(timeout=timeout)
-    context.stdout = stdout.decode("utf-8")
-    context.stderr = stderr.decode("utf-8")
+    context.handle.wait(timeout=timeout)
+    context.raw_stdout.seek(0)
+    context.raw_stderr.seek(0)
+    context.stdout = context.raw_stdout.read().decode("utf-8")
+    context.stderr = context.raw_stderr.read().decode("utf-8")
     context.returncode = context.handle.returncode
 
 
