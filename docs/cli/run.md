@@ -85,10 +85,12 @@ Shared Folders](/details/shared-folders/).
 steps outlined above. It will not start the guest virtual machine.
 
 - `-copy-in-before`: Copy the contents of a host directory to a location on the guest
-before booting the VM. For example `-copy-in-before path/on/host:/path/on/guest`
+before booting the VM. This will only copy to the first `-image` specified.
+For example `-copy-in-before path/on/host:/path/on/guest`
 
 - `-copy-out-after`: Copy the contents of a guest directory to a location on the hose
-after shutting down the VM. For example `-copy-out-after path/on/host:/path/on/guest`
+after shutting down the VM. This will only copy from the first `-image` specified.
+For example `-copy-out-after path/on/host:/path/on/guest`
 
 - `-qemu-bin-name NAME`: Use `NAME` instead of `qemu-system-x86_64` as the QEMU
 binary.
