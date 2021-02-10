@@ -33,6 +33,13 @@ def get_sftp_server(name: str) -> str:
 
 class SshfsThread(threading.Thread):
 
+    is_complete: threading.Event
+    exception: Optional[Exception]
+    ssh_timeout: int
+    local_dir: str
+    remote_dir: str
+    ssh_config: ssh.SshConfig
+
     # Slamming the server with 20 connections at once is a good way to break things:
     sshfs_sem = threading.Semaphore(MAX_CONCURRENT_SSHFS)
 
@@ -42,19 +49,20 @@ class SshfsThread(threading.Thread):
         super().__init__(daemon=True)
 
         self.is_complete = threading.Event()
-        self.exception: Optional[Exception] = None
+        self.exception = None
 
         self.ssh_timeout = ssh_timeout
         self.local_dir = local_dir
         self.remote_dir = remote_dir
         self.ssh_config = ssh_config
 
-    def wait_for_mount(self) -> None:
-        self.is_complete.wait()
+    def wait_for_mount(self, timeout: Optional[int] = None) -> None:
+        if self.is_complete.wait(timeout) is False:
+            raise RuntimeError(f"SSHFS mount timed out after {timeout} seconds")
         if self.exception:
             raise RuntimeError(f"SSHFS mount failed: {self.exception}")
 
-    def do_mount(self) -> None:
+    def __do_mount(self) -> None:
         sshfs_options = "-o slave,allow_other"
         sshfs_command = (
             f"sudo -E sshfs {sshfs_options} :{self.local_dir} {self.remote_dir}"
@@ -137,7 +145,7 @@ class SshfsThread(threading.Thread):
 
     def run(self) -> None:
         try:
-            self.do_mount()
+            self.__do_mount()
         except Exception as e:
             self.exception = e
             self.is_complete.set()

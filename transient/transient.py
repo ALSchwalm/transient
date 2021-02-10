@@ -262,7 +262,7 @@ class TransientVm:
             port=self.set_ssh_port,
             user=self.config.ssh_user,
             ssh_bin_name=self.config.ssh_bin_name,
-            sftp_server_bin_name=self.config.sftp_server_bin_name
+            sftp_server_bin_name=self.config.sftp_server_bin_name,
         )
 
     def __connect_ssh(self) -> int:
@@ -432,7 +432,7 @@ class TransientVm:
             sshfs_threads[-1].start()
 
         for sshfs_thread in sshfs_threads:
-            sshfs_thread.wait_for_mount()
+            sshfs_thread.wait_for_mount(self.config.ssh_timeout)
 
         if self.__needs_ssh_console():
             # Note that we always return the SSH exit code, even if the guest failed to
