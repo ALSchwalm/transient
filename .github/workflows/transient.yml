@@ -35,6 +35,7 @@ jobs:
           - persist
           - ssh_console
           - ssh_command
+          - sshfs
     container:
       image: ubuntu:20.04
       env:
