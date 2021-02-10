@@ -5,10 +5,12 @@ import shutil
 import subprocess
 import threading
 import inspect
+import io
 
-from typing import Optional, List
+from typing import Optional, List, cast
 
 from . import linux
+from . import utils
 from . import ssh
 
 MAX_CONCURRENT_SSHFS = 8
@@ -72,11 +74,7 @@ class SshfsThread(threading.Thread):
         ssh_command = inspect.cleandoc(
             f"""
             set -e
-            echo TRANSIENT_SSH_COMPLETE >&2
             sudo mkdir -p {self.remote_dir}
-
-            # Cache these paths to speed up the SSHFS step. Pass/fail doesn't matter.
-            which sudo sshfs 2>/dev/null >/dev/null || true
 
             echo TRANSIENT_SSHFS_STARTING >&2
             {sshfs_command}
@@ -107,17 +105,15 @@ class SshfsThread(threading.Thread):
             # Everything from here on out simply verifies that nothing went wrong.
             assert ssh_proc.stderr is not None
 
-            first_stderr_line = ssh_proc.stderr.readline().decode("utf-8")
-            if "TRANSIENT_SSH_COMPLETE" not in first_stderr_line:
+            try:
+                buff = utils.read_until(
+                    cast(io.BufferedReader, ssh_proc.stderr),
+                    b"TRANSIENT_SSHFS_STARTING",
+                    self.ssh_timeout,
+                )
+            except TimeoutError as e:
                 ssh_proc.kill()
-                stderr = first_stderr_line + ssh_proc.communicate()[1].decode("utf-8")
-                raise RuntimeError(f"SSH connection failed with: {stderr}")
-
-        second_stderr_line = ssh_proc.stderr.readline().decode("utf-8")
-        if "TRANSIENT_SSHFS_STARTING" not in second_stderr_line:
-            ssh_proc.kill()
-            stderr = second_stderr_line + ssh_proc.communicate()[1].decode("utf-8")
-            raise RuntimeError(f"Shared folder prep failed with: {stderr}")
+                raise RuntimeError(f"Timeout while waiting for SSHFS. Output: {e}")
 
         try:
             # Now that the SSH connection is established, the SSHFS timeout can be very short

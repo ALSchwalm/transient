@@ -1,11 +1,14 @@
 import distutils.util
 import logging
 import itertools
+import io
 import os
 import pathlib
 import progressbar  # type: ignore
+import select
 import socket
 import subprocess
+import time
 import tempfile
 import uuid
 
@@ -122,6 +125,51 @@ def prepare_file_operation_bar(filesize: int) -> progressbar.ProgressBar:
             progressbar.ETA(),
         ],
     )
+
+
+def read_until(
+    source: io.BufferedReader, sentinel: bytes, timeout: Optional[float] = None
+) -> bytes:
+    """ Read from an IO source until the given sentinel is seen
+
+    This can be thought of as a generalization of IOBase.readline(). When called,
+    this method will read bytes from the source until the bytes in 'sentinel'
+    are seen. The bytes read will then be returned (including the sentinel). If
+    the 'timeout' value is specified, a TimeoutError will be raised if the
+    sentinel value is not seen within the given timeout. That exception will
+    contain the bytes that had been read at the point the timeout occured.
+    """
+    start_time = time.time()
+    time_remaining = timeout
+    buff = b""
+    while True:
+        (ready, _, _) = select.select([source], [], [], time_remaining)
+
+        # If nothing is ready, then we must have set a timeout and reached it
+        if len(ready) == 0:
+            assert timeout is not None
+            raise TimeoutError(buff)
+
+        waiting = source.peek()
+        sentinel_start = (buff + waiting).find(sentinel)
+
+        if sentinel_start != -1:
+            if sentinel_start >= len(buff):
+                bytes_to_read = sentinel_start - len(buff) + len(sentinel)
+            else:
+                bytes_to_read = len(sentinel) - (len(buff) - sentinel_start)
+            buff += source.read(bytes_to_read)
+            return buff
+        else:
+            # Avoid reading more than we peeked at
+            buff += source.read(len(waiting))
+
+        # If we set a timeout, make sure we have time left to try again,
+        # otherwise, bail out
+        if timeout is not None:
+            time_remaining = start_time + timeout - time.time()
+            if time_remaining < 0:
+                raise TimeoutError(buff)
 
 
 def copy_with_progress(
