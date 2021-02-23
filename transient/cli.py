@@ -291,6 +291,12 @@ def delete_impl(**kwargs: Any) -> None:
 @click.option(
     "-name", type=str, help="Connect to a vm with the given name", required=True
 )
+@click.option(
+    "-wait",
+    "-w",
+    is_flag=True,
+    help="Wait for at most 'ssh-timeout' for a vm with the given name to exist",
+)
 @with_options(_ssh_options)
 @cli_entry.command(name="ssh")
 def ssh_impl(**kwargs: Any) -> None:
@@ -301,9 +307,12 @@ def ssh_impl(**kwargs: Any) -> None:
         print(e, file=sys.stderr)
         sys.exit(1)
 
-    instances = scan.find_transient_instances(
-        name=config.name, timeout=config.ssh_timeout
-    )
+    if config.wait:
+        timeout = config.ssh_timeout
+    else:
+        timeout = None
+
+    instances = scan.find_transient_instances(name=config.name, timeout=timeout)
     if len(instances) > 1:
         # There shouldn't be instances with the same name, so just take the first and log
         logging.warning(

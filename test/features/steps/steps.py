@@ -238,18 +238,20 @@ def step_impl(context):
 
 
 @When('a transient ssh command "{command}" runs on "{name}"')
-@When('a transient ssh command "{command}" runs on "{name}" with timeout {timeout}')
-def step_impl(context, command, name=None, timeout=None):
+@When('a transient ssh command "{command}" runs on "{name}" with "{flag}"')
+def step_impl(context, command, name=None, flag=None):
     command = [
         "transient",
         "ssh",
         "-ssh-timeout",
-        str(timeout or VM_WAIT_TIME),
+        str(VM_WAIT_TIME),
         "-ssh-command",
         command,
         "-name",
         name,
     ]
+    if flag is not None:
+        command.append(flag)
     handle = subprocess.Popen(
         command, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE
     )

@@ -152,6 +152,7 @@ class _TransientSshConfigSchema(_TransientConfigSchema):
     """
 
     name = fields.Str(allow_none=False)
+    wait = fields.Bool(missing=False)
     ssh_command = fields.Str(allow_none=True)
     ssh_bin_name = fields.Str(missing="ssh", allow_none=True)
     ssh_timeout = fields.Int(missing=90, allow_none=True)

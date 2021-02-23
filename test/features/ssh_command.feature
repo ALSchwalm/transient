@@ -11,12 +11,12 @@ Feature: SSH Command
       And a ssh console
       And a name "test-vm"
      When the vm runs
-      And a transient ssh command "echo ssh-command working" runs on "test-vm"
+      And a transient ssh command "echo ssh-command working" runs on "test-vm" with "-wait"
      Then the return code is 0
       And stdout contains "ssh-command working"
       And the vm is terminated
 
   Scenario: Attempt to connect to a VM that is not running
-     When a transient ssh command "echo ssh-command working" runs on "test-vm" with timeout 30
+     When a transient ssh command "echo ssh-command working" runs on "test-vm"
      Then the return code is 1
       And stderr contains "No running VMs"
