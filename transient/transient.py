@@ -409,10 +409,6 @@ class TransientVm:
         if self.__needs_ssh():
             self.__prepare_ssh()
 
-        # Now that we know the ssh port (if any), we can write out the
-        # proc data to our tempfile
-        self.__prepare_proc_data()
-
         sshfs_threads = []
         for shared_spec in self.config.shared_folder:
             assert self.ssh_config is not None
@@ -433,6 +429,10 @@ class TransientVm:
 
         for sshfs_thread in sshfs_threads:
             sshfs_thread.wait_for_mount(self.config.ssh_timeout)
+
+        # Now that we know the ssh port (if any) and we've set up shared folders,
+        # we can write out the proc data to our tempfile
+        self.__prepare_proc_data()
 
         if self.__needs_ssh_console():
             # Note that we always return the SSH exit code, even if the guest failed to
