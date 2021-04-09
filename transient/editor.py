@@ -219,9 +219,9 @@ class ImageEditor:
         ) as kernel, utils.package_file_path("transient-initramfs") as initramfs:
             qemu_runner = qemu.QemuRunner(
                 [
-                    # Use kvm if available
+                    # Use kvm (Linux) or hvf (macOS) if available
                     "-machine",
-                    "accel=kvm:tcg",
+                    "accel=kvm:hvf:tcg",
                     # Arbitrary cpu/mem
                     # TODO: this should be configurable
                     "-smp",
