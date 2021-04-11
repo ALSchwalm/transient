@@ -280,18 +280,21 @@ class PartitionInstruction(ImageInstruction):
         if self.size is not None:
             partition_cmd += f"size={self.size}{self.units},"
 
+        has_type = False
         if self.flags is not None:
             for flag in self.flags:
                 if flag == "boot":
                     partition_cmd += "bootable,"
                 elif flag == "efi":
                     partition_cmd += "type=U,"
+                    has_type = True
                 elif flag == "bios_grub":
                     # The BIOS boot GPT GUID
                     partition_cmd += "type=21686148-6449-6E6F-744E-656564454649,"
+                    has_type = True
 
         # Mark anything that doesn't have an explicit type as Linux
-        if partition_cmd == "":
+        if has_type is False:
             partition_cmd += "type=L,"
 
         commands = [
