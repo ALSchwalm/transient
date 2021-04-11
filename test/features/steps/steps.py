@@ -89,6 +89,11 @@ def step_impl(context):
     }
 
 
+@given("the prepare-build make target is run")
+def step_impl(context):
+    subprocess.run(["make", "prepare-build"])
+
+
 @given("a transient build command")
 def step_impl(context):
     # Build commands can take a _long_ time (when we don't have KVM), so wait
@@ -120,6 +125,26 @@ def step_impl(context, builddir):
 @given('a disk image "{image}"')
 def step_impl(context, image):
     context.vm_config["transient-args"].extend(["-image", image])
+
+
+@given("an http alpine disk image")
+def step_impl(context):
+    context.vm_config["transient-args"].extend(
+        [
+            "-image",
+            "alpine_rel3,http=https://github.com/ALSchwalm/transient-baseimages/releases/download/3/alpine-3.13.qcow2",
+        ]
+    )
+
+
+@given("an http centos disk image")
+def step_impl(context):
+    context.vm_config["transient-args"].extend(
+        [
+            "-image",
+            "centos7_rel3,http=https://github.com/ALSchwalm/transient-baseimages/releases/download/3/centos-7.8.2003.qcow2",
+        ]
+    )
 
 
 @given("a ssh console")

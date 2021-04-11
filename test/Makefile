@@ -1,5 +1,5 @@
-UBUNTU_20_04_URL="http://cdimage.ubuntu.com/ubuntu-base/releases/20.04/release/ubuntu-base-20.04.1-base-amd64.tar.gz"
-UBUNTU_BASE=artifacts/build-dir/ubuntu.tar.gz
+ALPINE_3_13_URL="https://github.com/alpinelinux/docker-alpine/blob/db57c96bfff7363dd9bccc56a0ce6e846261bbf8/x86_64/alpine-minirootfs-3.13.4-x86_64.tar.gz?raw=true"
+ALPINE_3_13_BASE=artifacts/build-dir/alpine-3.13.tar.xz
 
 .PHONY: all
 all: | clean behave
@@ -11,32 +11,31 @@ ci: behave-ci
 docker-ci: docker-behave-ci
 
 .PHONY: behave
-behave: prepare
+behave:
 	behave
 
-docker-behave-ci-%: prepare
+docker-behave-ci-%:
 	behave -i $* --tags=~@skip-in-docker-ci --tags=~@skip-in-ci
 
-behave-ci-%: prepare
+behave-ci-%:
 	behave -i $* --tags=~@skip-in-ci
 
 .PHONY: docker-behave-ci
-docker-behave-ci: prepare
+docker-behave-ci:
 	behave --tags=~@skip-in-docker-ci --tags=~@skip-in-ci
 
 .PHONY: behave-ci
-behave-ci: prepare
+behave-ci:
 	behave --tags=~@skip-in-ci
 
-.PHONY: prepare
-prepare: $(UBUNTU_BASE)
-	cp ../kernel/rootfs_overlay/etc/ssh/sshd_config artifacts/build-dir
+.PHONY: prepare-build
+prepare-build: $(ALPINE_3_13_BASE)
 	cp ../kernel/rootfs_overlay/root/.ssh/authorized_keys artifacts/build-dir
-	cp resources/dhcp.network artifacts/build-dir
+	cp resources/interfaces artifacts/build-dir
 
-$(UBUNTU_BASE): | artifacts
+$(ALPINE_3_13_BASE): artifacts
 	mkdir -p artifacts/build-dir
-	curl -L $(UBUNTU_20_04_URL) -o artifacts/build-dir/ubuntu.tar.gz
+	curl -L $(ALPINE_3_13_URL) -o $@
 
 artifacts:
 	mkdir -p artifacts/

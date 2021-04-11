@@ -3,4 +3,4 @@ DISK 2gb GPT
 PARTITION 1 SIZE 300MB FLAGS bios_grub
 PARTITION 2 FORMAT ext2 MOUNT /
 
-ADD ubuntu.tar.gz /
+ADD alpine-3.13.tar.xz /

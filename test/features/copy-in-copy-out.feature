@@ -7,7 +7,7 @@ Feature: Copy-in and Copy-out Support
 
   Scenario: Copy in a file before starting VM
     Given a transient vm
-      And a disk image "generic/alpine38:v3.0.2"
+      And an http alpine disk image
       And a test file: "artifacts/copy-in-before-test-file"
       And a guest directory: "/home/vagrant/"
       And the test file is copied to the guest directory before starting
@@ -18,7 +18,7 @@ Feature: Copy-in and Copy-out Support
 
   Scenario: Copy in a large file before starting VM
     Given a transient vm
-      And a disk image "generic/alpine38:v3.0.2"
+      And an http alpine disk image
       And a large test file: "artifacts/copy-in-large-test-file"
       And a guest directory: "/home/vagrant/"
       And the test file is copied to the guest directory before starting
@@ -29,7 +29,7 @@ Feature: Copy-in and Copy-out Support
 
   Scenario: Copy out a file after stopping VM
     Given a transient vm
-      And a disk image "generic/alpine38:v3.0.2"
+      And an http alpine disk image
       And a host directory: "artifacts/"
       And a guest test file: "/home/vagrant/copy-out-after-test-file"
       And the guest test file is copied to the host directory after stopping

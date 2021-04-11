@@ -1,0 +1,53 @@
+FROM scratch
+DISK 20gb MBR
+PARTITION 1 FORMAT ext4 OPTIONS "-O ^64bit" MOUNT / FLAGS BOOT
+
+ADD alpine-3.13.tar.xz /
+
+RUN apk add syslinux linux-virt sudo openrc openssh-server busybox-initscripts \
+            pm-utils util-linux
+
+RUN adduser -S vagrant -G wheel -s /bin/sh
+RUN echo "vagrant:vagrant" | chpasswd
+RUN mkdir /home/vagrant/.ssh/
+ADD authorized_keys /home/vagrant/.ssh/authorized_keys
+RUN chown -R vagrant /home/vagrant/.ssh/
+RUN chmod 644 /home/vagrant/.ssh/authorized_keys
+RUN passwd -d root
+RUN sed -i 's/# %wheel/%wheel/' /etc/sudoers
+
+RUN ln -s /etc/init.d/agetty /etc/init.d/agetty.ttyS0
+
+RUN rc-update add devfs sysinit
+RUN rc-update add dmesg sysinit
+RUN rc-update add mdev sysinit
+RUN rc-update add hwdrivers sysinit
+RUN rc-update add bootmisc boot
+RUN rc-update add networking boot
+RUN rc-update add modules boot
+RUN rc-update add hostname boot
+RUN rc-update add sysctl boot
+RUN rc-update add syslog boot
+RUN rc-update add acpid default
+RUN rc-update add agetty.ttyS0 default
+RUN rc-update add sshd default
+
+RUN printf '\1' | cat /usr/share/syslinux/mbr.bin - | \
+    dd bs=440 count=1 iflag=fullblock conv=notrunc of=/dev/sda
+
+RUN extlinux --install /boot
+
+RUN sed -i 's/default_kernel_opts=quiet/default_kernel_opts="rootfstype=ext4 rootflags=rw console=ttyS0 console=tty0"/' \
+       /etc/update-extlinux.conf
+RUN sed -i 's/default=lts/default=virt/' /etc/update-extlinux.conf
+RUN sed -i 's/serial_port=/serial_port=0/' /etc/update-extlinux.conf
+RUN sed -i 's|root=|root=/dev/sda1|' /etc/update-extlinux.conf
+
+RUN echo "/dev/sda1 / ext4 rw 0 0" > /etc/fstab
+RUN echo "alpine-3_13" > /etc/hostname
+ADD interfaces /etc/network/interfaces
+RUN echo "" > /etc/motd
+
+RUN update-extlinux
+
+RUN sed -i 's/DEFAULT menu.c32/DEFAULT virt/' /boot/extlinux.conf

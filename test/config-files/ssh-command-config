@@ -1,5 +1,5 @@
 [transient]
-image = ["generic/alpine38:v3.0.2"]
+image = ["alpine,http=https://github.com/ALSchwalm/transient-baseimages/releases/download/2/alpine-3.13.qcow2"]
 ssh-command = "echo 'ssh-command working'"
 
 [qemu]

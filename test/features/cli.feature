@@ -3,7 +3,7 @@ Feature: Command line interface
 
 Scenario: Invalid flag
     Given a transient vm
-      And a disk image "generic/alpine38:v3.0.2"
+      And an http alpine disk image
       And a transient flag "-ssh-foobar"
      When the transient command is run
      Then the return code is 2
@@ -11,7 +11,7 @@ Scenario: Invalid flag
 
 Scenario: QEMU fast exit without error
     Given a transient vm
-      And a disk image "generic/alpine38:v3.0.2"
+      And an http alpine disk image
       And a qemu flag "-version"
      When the transient command is run
      Then the return code is 0
@@ -19,7 +19,7 @@ Scenario: QEMU fast exit without error
 
 Scenario: Multiple verbose flags is supported
     Given a transient vm
-      And a disk image "generic/alpine38:v3.0.2"
+      And an http alpine disk image
       And a transient early flag "-vvv"
       And the vm is prepare-only
      When the transient command is run

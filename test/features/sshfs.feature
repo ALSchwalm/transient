@@ -5,7 +5,7 @@ Feature: SSH Console
 
   Scenario: Install SSHFS on a CentOS VM
     Given a transient vm
-      And a disk image "centos/7:2004.01"
+      And an http centos disk image
       And a name "sshfs_test"
       And a ssh command "sudo yum install -y epel-release && sudo yum install -y sshfs"
      When the vm runs to completion
@@ -13,7 +13,7 @@ Feature: SSH Console
 
   Scenario: Run VM with a single SSHFS mount
     Given a transient vm
-      And a disk image "centos/7:2004.01"
+      And an http centos disk image
       And a name "sshfs_test"
       And a sshfs mount of "resources/sync:/mnt"
       And a ssh command "ls /mnt"
@@ -23,7 +23,7 @@ Feature: SSH Console
 
   Scenario: Run VM with two SSHFS mounts
     Given a transient vm
-      And a disk image "centos/7:2004.01"
+      And an http centos disk image
       And a name "sshfs_test"
       And a sshfs mount of "resources/sync:/mnt"
       And a sshfs mount of "resources:/mnt2"
