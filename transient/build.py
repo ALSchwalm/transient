@@ -90,9 +90,9 @@ class GuestChrootCommand(editor.GuestCommand):
         capture_stdout: bool = False,
         capture_stderr: bool = False,
     ):
-        escaped_command = cmd.replace("'", "'\\''")
+        escaped_command = cmd.replace("'", r"'\''")
         chroot_command = (
-            f"""unshare --fork --pid chroot /mnt /bin/bash -c '{escaped_command}' """
+            f"""unshare --fork --pid chroot /mnt /bin/sh -c '{escaped_command}' """
         )
         super().__init__(
             chroot_command,
@@ -513,9 +513,7 @@ class ImageBuilder:
         config = self.editor.ssh_config.override(
             args=[*self.editor.ssh_config.args, "-t"]
         )
-        client = ssh.SshClient(
-            config, command="unshare --fork --pid chroot /mnt /bin/bash"
-        )
+        client = ssh.SshClient(config, command="unshare --fork --pid chroot /mnt /bin/sh")
 
         # Connect everything normally
         handle = client.connect(
