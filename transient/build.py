@@ -36,7 +36,7 @@ start: (instruction | _NEWLINE | COMMENT)+
 instruction: run | copy | from | disk | partition | add | inspect
 run: "RUN"i run_body _NEWLINE
 run_body: RUN_CMD+
-RUN_CMD: /[^\\\n]/+
+RUN_CMD: /(\\[^ \t\n])|[^\\\n]/+
 
 copy: "COPY"i copy_source+ copy_destination _NEWLINE
 copy_source: PATH
