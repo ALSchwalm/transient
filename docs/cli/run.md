@@ -43,7 +43,7 @@ of `transient` with the same name and `-image` flags will boot with the same dis
 
 - `-image IMAGESPEC`: Downloads the requested virtual disk to backend and
 creates a copy in the disk frontend. This disk will be passed to the virtual machine.
-For additional information, see [Getting Images](/details/images/).
+For additional information, see [Getting Images](/images/images/).
 
 - `-image-frontend FRONTEND`: Use the provided `FRONTEND` path as the location to
 place the per-VM image copies. Note: this path defaults to
