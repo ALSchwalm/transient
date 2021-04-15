@@ -50,6 +50,9 @@ _ssh_options = [
     click.option(
         "-ssh-command", "-cmd", type=str, help="Run an ssh command instead of a console",
     ),
+    click.option(
+        "-ssh-option", "-o", multiple=True, type=str, help="Pass an option to SSH",
+    ),
 ]
 
 
@@ -328,6 +331,7 @@ def ssh_impl(**kwargs: Any) -> None:
         user=config.ssh_user,
         ssh_bin_name=config.ssh_bin_name,
         port=instance.ssh_port,
+        extra_options=config.ssh_option,
     )
     client = ssh.SshClient(config=ssh_config, command=config.ssh_command)
     connection = client.connect_stdout(config.ssh_timeout)

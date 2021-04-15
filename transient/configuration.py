@@ -218,6 +218,7 @@ class _TransientRunConfigSchema(_TransientConfigSchema):
     ssh_user = fields.Str(missing="vagrant", allow_none=True)
     ssh_console = fields.Bool(missing=False)
     ssh_with_serial = fields.Bool(missing=False)
+    ssh_option = fields.List(fields.Str(), missing=[])
     shared_folder = fields.List(fields.Str(), missing=[])
     sftp_bin_name = fields.Str(missing="sftp-server", allow_none=True)
     no_virtio_scsi = fields.Bool(missing=False)

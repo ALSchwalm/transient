@@ -263,6 +263,7 @@ class TransientVm:
             user=self.config.ssh_user,
             ssh_bin_name=self.config.ssh_bin_name,
             sftp_server_bin_name=self.config.sftp_server_bin_name,
+            extra_options=self.config.ssh_option,
         )
 
     def __connect_ssh(self) -> int:

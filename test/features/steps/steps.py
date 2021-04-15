@@ -3,6 +3,7 @@ import os
 import subprocess
 import tempfile
 import time
+import shlex
 from behave import *
 from hamcrest import *
 
@@ -126,6 +127,10 @@ def step_impl(context, image):
 def step_impl(context):
     context.vm_config["transient-args"].extend(["-ssh-console"])
 
+@given('extra argument "{arg}"')
+def step_impl(context, arg):
+    args = shlex.split(arg)
+    context.vm_config["transient-args"].extend(args)
 
 @given("a ssh-with-serial console")
 def step_impl(context):
@@ -324,3 +329,23 @@ def step_impl(context, name):
 @then('the file "{file_path}" exists')
 def step_impl(context, file_path):
     assert os.path.exists(file_path)
+
+@then('the file "{file_path}" appears')
+def step_impl(context, file_path):
+    for _ in range(60):
+        if os.path.exists(file_path):
+            return
+        time.sleep(1)
+    assert False, f"File {file_path} didn't appear"
+
+@then('the following commands should succeed')
+def step_impl(context):
+    script = 'set -ex\n' + context.text
+    result = subprocess.run(
+            ['/bin/bash'],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            input=script,
+            universal_newlines=True)
+    print(result.stdout) # so behave can capture it and display it on error
+    result.check_returncode()
