@@ -335,7 +335,7 @@ def step_impl(context, file_path):
 
 @then('the file "{file_path}" appears')
 def step_impl(context, file_path):
-    for _ in range(60):
+    for _ in range(300):
         if os.path.exists(file_path):
             return
         time.sleep(1)
