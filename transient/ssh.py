@@ -49,7 +49,7 @@ class SshConfig:
         self.args.extend(self.__default_ssh_args())
         if extra_options:
             for opt in extra_options:
-                self.args.extend(['-o', opt])
+                self.args.extend(["-o", opt])
 
     def __default_ssh_args(self) -> List[str]:
         return [
