@@ -338,7 +338,7 @@ def step_impl(context, file_path):
         time.sleep(1)
     assert False, f"File {file_path} didn't appear"
 
-@then('the following commands should succeed')
+@then('the following shell commands should succeed')
 def step_impl(context):
     script = 'set -ex\n' + context.text
     result = subprocess.run(
