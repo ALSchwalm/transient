@@ -45,6 +45,7 @@ def run_vm(context):
         stderr=context.raw_stderr,
     )
     context.handle = handle
+    context.add_cleanup(handle.terminate)
     return context.handle
 
 
