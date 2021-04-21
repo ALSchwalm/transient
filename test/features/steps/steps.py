@@ -342,6 +342,7 @@ def step_impl(context, file_path, seconds):
         time.sleep(1)
     assert False, f"File {file_path} didn't appear"
 
+
 @then('"{file_path}" is a socket')
 def step_impl(context, file_path):
     info = os.stat(file_path)
