@@ -21,7 +21,7 @@ Feature: SSH Command
      Then the return code is 1
       And stderr contains "No running VMs"
 
-  Scenario: We can run ssh with custom options
+  Scenario: Run ssh with custom options
     Given a transient vm
       And a disk image "generic/alpine38:v3.0.2"
       And a ssh command "sleep 600"
@@ -30,10 +30,6 @@ Feature: SSH Command
       And extra argument "-ssh-option ControlMaster=yes"
       And extra argument "-ssh-option ControlPath=myctrlsock"
      When the vm runs
-     Then the file "myctrlsock" appears
-      And the following shell commands should succeed
-         """
-         scp -o ControlPath=myctrlsock foo:/etc/os-release os-release
-         grep 'ID=alpine' os-release
-         """
+     Then the file "myctrlsock" appears within 180 seconds
+      And "myctrlsock" is a socket
       And the vm is terminated
