@@ -20,3 +20,16 @@ Feature: SSH Command
      When a transient ssh command "echo ssh-command working" runs on "test-vm"
      Then the return code is 1
       And stderr contains "No running VMs"
+
+  Scenario: Run ssh with custom options
+    Given a transient vm
+      And a disk image "generic/alpine38:v3.0.2"
+      And a ssh command "sleep 600"
+      And a ssh console
+      And a name "test-vm"
+      And extra argument "-ssh-option ControlMaster=yes"
+      And extra argument "-ssh-option ControlPath=myctrlsock"
+     When the vm runs
+     Then the file "myctrlsock" appears within 180 seconds
+      And "myctrlsock" is a socket
+      And the vm is terminated

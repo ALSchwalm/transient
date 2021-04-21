@@ -35,6 +35,7 @@ class SshConfig:
         user: Optional[str] = None,
         password: Optional[str] = None,
         args: Optional[List[str]] = None,
+        extra_options: Optional[List[str]] = None,
     ) -> None:
         self.host = host
         self.port = port if port is not None else 22
@@ -46,6 +47,9 @@ class SshConfig:
 
         # Pass these as default args
         self.args.extend(self.__default_ssh_args())
+        if extra_options:
+            for opt in extra_options:
+                self.args.extend(["-o", opt])
 
     def __default_ssh_args(self) -> List[str]:
         return [

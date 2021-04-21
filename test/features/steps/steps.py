@@ -3,8 +3,10 @@ import os
 import subprocess
 import tempfile
 import time
+import shlex
 from behave import *
 from hamcrest import *
+import stat
 
 # Wait for a while, as we may be downloading the image as well
 VM_WAIT_TIME = 60 * 15
@@ -150,6 +152,12 @@ def step_impl(context):
 @given("a ssh console")
 def step_impl(context):
     context.vm_config["transient-args"].extend(["-ssh-console"])
+
+
+@given('extra argument "{arg}"')
+def step_impl(context, arg):
+    args = shlex.split(arg)
+    context.vm_config["transient-args"].extend(args)
 
 
 @given("a ssh-with-serial console")
@@ -351,3 +359,18 @@ def step_impl(context, name):
 @then('the file "{file_path}" exists')
 def step_impl(context, file_path):
     assert os.path.exists(file_path)
+
+
+@then('the file "{file_path}" appears within {seconds} seconds')
+def step_impl(context, file_path, seconds):
+    for _ in range(int(seconds)):
+        if os.path.exists(file_path):
+            return
+        time.sleep(1)
+    assert False, f"File {file_path} didn't appear"
+
+
+@then('"{file_path}" is a socket')
+def step_impl(context, file_path):
+    info = os.stat(file_path)
+    assert stat.S_ISSOCK(info.st_mode), f"File {file_path} is not a socket"
