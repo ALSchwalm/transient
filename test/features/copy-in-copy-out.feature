@@ -37,3 +37,13 @@ Feature: Copy-in and Copy-out Support
      When the vm runs to completion
      Then the return code is 0
       And the file "artifacts/copy-out-after-test-file" exists
+
+  Scenario: Copy in a symbolic link
+    Given a transient vm
+      And an http alpine disk image
+      And a symbolic link "artifacts/symlink" to "/etc/hostname"
+      And a guest directory: "/home/vagrant/"
+      And the test file is copied to the guest directory before starting
+      And a ssh command "test -L /home/vagrant/symlink"
+     When the vm runs to completion
+     Then the return code is 0

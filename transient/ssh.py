@@ -202,40 +202,6 @@ def _prepare_builtin_keys() -> List[str]:
     return list(builtins.values())
 
 
-def scp(
-    source: str,
-    destination: str,
-    config: SshConfig,
-    copy_from: bool = False,
-    capture_stdout: bool = False,
-    capture_stderr: bool = True,
-) -> Tuple[Optional[str], Optional[str]]:
-    if config.user is not None:
-        host = f"{config.user}@{config.host}"
-    else:
-        host = f"{config.host}"
-
-    args = ["-p", "-r", "-P", str(config.port), *config.args]
-
-    priv_keys = _prepare_builtin_keys()
-    for key in priv_keys:
-        args.extend(["-i", key])
-
-    if copy_from is False:
-        host += f":{destination}"
-        return utils.run_check_retcode(
-            ["scp", *args, source, host],
-            capture_stdout=capture_stdout,
-            capture_stderr=capture_stderr,
-        )
-    else:
-        host += f":{source}"
-        return utils.run_check_retcode(
-            ["scp", *args, host, destination],
-            capture_stdout=capture_stdout,
-            capture_stderr=capture_stderr,
-        )
-
 def find_ssh_port_forward(qmp_client: qemu.QmpClient) -> int:
     # Use qmp to determine what port was selected by the kernel
     resp = qmp_client.send_sync(
@@ -274,31 +240,26 @@ def rsync(
     else:
         host = f"{config.host}"
 
-    args = [
-        "--times",
-        "--perms",
-        "--recursive",
-        "--links",
-        f"--port={config.port}",
-        "-e",
-        *config.args,
-    ]
+    ssh_command = [config.ssh_bin_name] + config.args + ["-p", str(config.port)]
+    rsync_args = ["--archive", "--acls", "--xattrs", "--sparse", "--info=progress2"]
 
     priv_keys = _prepare_builtin_keys()
     for key in priv_keys:
-        args.extend(["-i", key])
+        ssh_command.extend(["-i", key])
+
+    rsync_args.extend(["-e", " ".join(ssh_command)])
 
     if copy_from is False:
         host += f":{destination}"
         return utils.run_check_retcode(
-            ["rsync", *args, source, host],
+            ["rsync", *rsync_args, source, host],
             capture_stdout=capture_stdout,
             capture_stderr=capture_stderr,
         )
     else:
         host += f":{source}"
         return utils.run_check_retcode(
-            ["rsync", *args, host, destination],
+            ["rsync", *rsync_args, host, destination],
             capture_stdout=capture_stdout,
             capture_stderr=capture_stderr,
         )

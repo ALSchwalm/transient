@@ -217,6 +217,13 @@ def step_impl(context, test_file_path):
     context.vm_config["test-file"] = test_file_path
 
 
+@given('a symbolic link "{test_symlink_path}" to "{target}"')
+def step_impl(context, test_symlink_path, target):
+    if not os.path.lexists(test_symlink_path):
+        os.symlink(target, test_symlink_path)
+    context.vm_config["test-file"] = test_symlink_path
+
+
 @given('a large test file: "{test_file_path}"')
 def step_impl(context, test_file_path):
     os.makedirs(os.path.dirname(test_file_path), exist_ok=True)
