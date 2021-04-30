@@ -1,5 +1,7 @@
 TRANSIENT_KERNEL=transient/static/transient-kernel
-TRANSIENT_KCONFIG=config/transient-kernel-config
+TRANSIENT_INITRAMFS=transient/static/transient-initramfs
+TRANSIENT_BUILDROOT_CONFIG=kernel/buildroot-config
+TRANSIENT_KCONFIG=kernel/kernel-config
 COMPREHENSIVE_EXAMPLE=docs/configuration-file/comprehensive-example.md
 MAX_LINE_LENGTH?=100
 
@@ -49,14 +51,17 @@ test:
 test-%:
 	make -C test $*
 
-$(TRANSIENT_KERNEL): $(TRANSIENT_KCONFIG)
-	git clone --depth 1 --branch v5.7 https://git.kernel.org/pub/scm/linux/kernel/git/torvalds/linux.git transient-kernel
-	cp $(TRANSIENT_KCONFIG) transient-kernel/.config
-	make -C transient-kernel bzImage
-	cp transient-kernel/arch/x86/boot/bzImage $(TRANSIENT_KERNEL)
+$(TRANSIENT_INITRAMFS) $(TRANSIENT_KERNEL): $(TRANSIENT_KCONFIG) $(TRANSIENT_BUILDROOT_CONFIG)
+	cp $(TRANSIENT_BUILDROOT_CONFIG) kernel/buildroot/.config
+	make -C kernel/buildroot
+	cp kernel/buildroot/output/images/bzImage $(TRANSIENT_KERNEL)
+	cp kernel/buildroot/output/images/rootfs.cpio.gz $(TRANSIENT_INITRAMFS)
 
 .PHONY: kernel
-kernel: transient/static/transient-kernel
+kernel: $(TRANSIENT_KERNEL)
+
+.PHONY: initramfs
+initramfs: $(TRANSIENT_INITRAMFS)
 
 .PHONY: $(COMPREHENSIVE_EXAMPLE)
 $(COMPREHENSIVE_EXAMPLE):
@@ -73,3 +78,4 @@ docs: $(COMPREHENSIVE_EXAMPLE)
 clean:
 	rm -rf sdist dist $(COMPREHENSIVE_EXAMPLE)
 	make -C test clean
+	make -C kernel/buildroot clean
