@@ -8,6 +8,7 @@ dist/
 transient-kernel/
 working/
 tags
+.ignore
 
 # artifacts produced from testing
 artifacts
