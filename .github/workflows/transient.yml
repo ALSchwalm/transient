@@ -45,7 +45,7 @@ jobs:
     - name: Install package dependencies
       run: |
         apt-get -y update
-        apt-get -y install ssh qemu-system-x86 python3-pip curl
+        apt-get -y install ssh qemu-system-x86 python3-pip curl rsync
     - name: Install python dependencies
       run: |
         python3 -m pip install --upgrade pip
@@ -74,7 +74,7 @@ jobs:
     - name: Install package dependencies
       run: |
         sudo apt-get update
-        sudo apt-get install ssh qemu curl
+        sudo apt-get install ssh qemu curl rsync
     - name: Set up Python ${{ matrix.python-version }}
       uses: actions/setup-python@v2
       with:
