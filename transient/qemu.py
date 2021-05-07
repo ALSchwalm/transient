@@ -157,6 +157,9 @@ class QmpClient:
         else:
             raise RuntimeError(f"Invalid argument to register_callback '{id_or_event}'")
 
+    def remove_event_callbacks(self, event: str) -> None:
+        del self.event_callbacks[event]
+
 
 class QemuRunner:
     bin_name: str
@@ -254,6 +257,33 @@ class QemuRunner:
         self.qmp_client.send_sync({"execute": "system_powerdown"})
 
         return self.wait(timeout=timeout)
+
+    def wait_event(
+        self, events: List[str], timeout: Optional[int] = None
+    ) -> Optional[QmpMessage]:
+        if self.qmp_client is None:
+            raise RuntimeError(
+                "Qemu 'wait_event' can only be called when 'qmp_connectable=True'"
+            )
+        message = None
+        semaphore = threading.Semaphore(value=0)
+
+        def on_event(received: QmpMessage) -> None:
+            nonlocal message
+            message = received
+            semaphore.release()
+
+        for event in events:
+            self.qmp_client.register_callback(event, on_event)
+
+        # Wait until the timeout or the event is received
+        semaphore.acquire(timeout=timeout)  # type: ignore
+
+        # Clean up the callbacks
+        for event in events:
+            self.qmp_client.remove_event_callbacks(event)
+
+        return message
 
     def wait(self, timeout: Optional[int] = None) -> int:
         if self.proc_handle is None:

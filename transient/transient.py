@@ -354,6 +354,40 @@ class TransientVm:
         qemu_env[scan.SCAN_DATA_FD] = str(self.data_tempfile.fileno())
         return qemu_env
 
+    def __ssh_session(self) -> int:
+        assert self.qemu_runner is not None
+        assert self.qemu_runner.qmp_client is not None
+
+        while True:
+            returncode = self.__connect_ssh()
+
+            if self.config.reset_check_timeout == 0:
+                logging.info("Skipping reset check, as requested")
+                break
+
+            logging.info(
+                f"Waiting {self.config.reset_check_timeout} seconds for reset signal"
+            )
+
+            # When the connection closes, wait for a bit to see if the machine is
+            # in the process of rebooting (or is already shutting down)
+            message = self.qemu_runner.wait_event(
+                ["SHUTDOWN", "RESET"], timeout=self.config.reset_check_timeout
+            )
+
+            if message is None or message["event"] == "SHUTDOWN":
+                # If we received SHUTDOWN or nothing, do not attempt to reconnect.
+                break
+            elif message["event"] == "RESET":
+                # If the machine is rebooting, attempt to reconnect automatically
+                logging.debug(f"Received RESET event after SSH disconnect. Reconnecting")
+
+                continue
+            else:
+                raise RuntimeError("Received unknown QMP event")
+
+        return returncode
+
     def run(self) -> None:
         self.state = TransientVmState.RUNNING
 
@@ -439,7 +473,7 @@ class TransientVm:
             # Note that we always return the SSH exit code, even if the guest failed to
             # shut down. This ensures the shutdown_timeout=0 case is handled as expected.
             # (i.e., it returns the SSH code instead of a QEMU error)
-            returncode = self.__connect_ssh()
+            returncode = self.__ssh_session()
 
             # In theory, we could get SIGCHLD from the QEMU process before getting or
             # processing the SHUTDOWN event. So set this flag so we don't do the

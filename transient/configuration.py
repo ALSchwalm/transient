@@ -223,6 +223,7 @@ class _TransientRunConfigSchema(_TransientConfigSchema):
     shared_folder = fields.List(fields.Str(), missing=[])
     sftp_bin_name = fields.Str(missing="sftp-server", allow_none=True)
     no_virtio_scsi = fields.Bool(missing=False)
+    reset_check_timeout = fields.Int(missing=3)
 
 
 def _option_was_set_in_cli(option: Any) -> bool:

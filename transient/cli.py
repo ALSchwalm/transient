@@ -186,6 +186,11 @@ def cli_entry(verbose: int) -> None:
     help="The time to wait for shutdown before terminating QEMU",
 )
 @click.option(
+    "-reset-check-timeout",
+    type=int,
+    help="Time in seconds to wait for reset signal after SSH disconnect (0 to disable check)",
+)
+@click.option(
     "-qemu-bin-name", type=str, default="qemu-system-x86_64", help="QEMU binary to use"
 )
 @click.option(
