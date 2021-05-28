@@ -109,7 +109,7 @@ class VagrantImageProtocol(BaseImageProtocol):
         try:
             response.raise_for_status()
         except requests.exceptions.HTTPError:
-            raise RuntimeError(
+            raise utils.TransientError(
                 f"Unable to download vagrant image '{image_name}' info. Maybe invalid image?"
             )
         return cast(Dict[str, Any], json.loads(response.content))
@@ -126,7 +126,7 @@ class VagrantImageProtocol(BaseImageProtocol):
                 download_url = provider["download_url"]
                 assert isinstance(download_url, str)
                 return download_url
-        raise RuntimeError(
+        raise utils.TransientError(
             "No version '{}' available for {} with provider libvirt".format(
                 version, box_info["tag"]
             )
@@ -135,7 +135,13 @@ class VagrantImageProtocol(BaseImageProtocol):
     def _do_retrieve_image(
         self, store: "ImageStore", spec: "ImageSpec", destination: IO[bytes]
     ) -> None:
-        box_name, version = spec.source.split(":", 1)
+        try:
+            box_name, version = spec.source.split(":", 1)
+        except ValueError:
+            raise utils.TransientError(
+                f"No image named {spec.source} found in the backend, and no "
+                "version provided, so it cannot be downloaded."
+            )
 
         # For convenience, allow the user to specify the version with a v,
         # but that isn't how the API reports it
@@ -199,10 +205,12 @@ class FrontendImageProtocol(BaseImageProtocol):
 
         candidates = store.frontend_image_list(vm_name, source)
         if len(candidates) == 0:
-            raise RuntimeError(f"No backend image '{source}' for VM '{vm_name}'")
+            raise utils.TransientError(f"No backend image '{source}' for VM '{vm_name}'")
         elif len(candidates) > 1:
             # This should be impossible, but check anyway
-            raise RuntimeError(f"Ambiguous backend image '{source}' for VM '{vm_name}'")
+            raise utils.TransientError(
+                f"Ambiguous backend image '{source}' for VM '{vm_name}'"
+            )
         frontend_image = candidates[0]
         with open(frontend_image.path, "rb") as existing_file:
             utils.copy_with_progress(
@@ -274,7 +282,7 @@ class ImageSpec:
     def __init__(self, spec: str) -> None:
         parsed = _IMAGE_SPEC.match(spec)
         if parsed is None:
-            raise RuntimeError(f"Invalid image spec '{spec}'")
+            raise utils.TransientError(f"Invalid image spec '{spec}'")
         self.name, proto, self.source = parsed.groups()
 
         # If no protocol is specified, use vagrant
@@ -287,7 +295,7 @@ class ImageSpec:
             if protocol.matches(proto):
                 self.source_proto = protocol
                 return
-        raise RuntimeError(f"Unknown image source protocol '{proto}'")
+        raise utils.TransientError(f"Unknown image source protocol '{proto}'")
 
 
 class BaseImageInfo:
@@ -460,7 +468,7 @@ class ImageStore:
         elif _BACKEND_IMAGE_REGEX.match(filename):
             return BackendImageInfo(self, path)
         else:
-            raise RuntimeError(f"Invalid image file name: '{filename}'")
+            raise utils.TransientError(f"Invalid image file name: '{filename}'")
 
     def backend_path(self, spec: ImageSpec) -> str:
         safe_name = storage_safe_encode(spec.name)

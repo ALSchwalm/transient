@@ -375,3 +375,8 @@ def step_impl(context, file_path, seconds):
 def step_impl(context, file_path):
     info = os.stat(file_path)
     assert stat.S_ISSOCK(info.st_mode), f"File {file_path} is not a socket"
+
+
+@then("there is no stack trace")
+def step_impl(context):
+    assert_that(context.stderr, not_(contains_string("Traceback")))
