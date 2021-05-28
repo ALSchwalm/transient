@@ -14,6 +14,7 @@ import tempfile
 import uuid
 import sys
 import zlib
+from contextlib import contextmanager
 
 try:
     import importlib.resources as pkg_resources
@@ -21,7 +22,18 @@ except ImportError:
     # Try backported to PY<37 `importlib_resources`.
     import importlib_resources as pkg_resources  # type: ignore
 
-from typing import cast, Optional, ContextManager, List, Union, IO, Any, Tuple, Callable
+from typing import (
+    cast,
+    Optional,
+    ContextManager,
+    List,
+    Union,
+    IO,
+    Any,
+    Tuple,
+    Iterator,
+    Callable,
+)
 from . import static
 
 # From the typeshed Popen definitions
@@ -407,3 +419,32 @@ class TransientProcessError(TransientError):
         else:
             errcode = 1
         sys.exit(errcode)
+
+
+@contextmanager
+def cleanup_on_error(
+    *args: Any, rename: Optional[str] = None, **kwargs: Any
+) -> Iterator[IO[Any]]:
+    """Open (or create) a file, as with open(). If the context manager exits
+    with an error, then the file will be deleted. Otherwise it will be left
+    alone. If the rename parameter is given, then the file will be atomically
+    renamed on success.
+
+    If you want to use this to wrap a file descriptor, you might need to
+    manually set fp.name, or use an opener function.
+    """
+
+    fp = open(*args, **kwargs)
+    with fp:
+        try:
+            yield fp
+            if rename is not None:
+                os.rename(fp.name, rename)
+        except:
+            try:
+                os.unlink(fp.name)
+            except AttributeError:
+                logging.warning("Cannot remove temp file: We don't know it's name")
+            except OSError as e:
+                logging.warning("Cannot remove temp file %s: %s", fp.name, e)
+            raise

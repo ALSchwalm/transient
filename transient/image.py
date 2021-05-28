@@ -49,37 +49,40 @@ class BaseImageProtocol:
         # Do partial downloads into the working directory in the backend
         dest_name = os.path.basename(destination)
         temp_destination = os.path.join(store.working, dest_name)
-        fd = self.__lock_backend_destination(temp_destination)
 
-        # We now hold the lock. Either another process started the retrieval
-        # and died (or never started at all) or they completed. If the final file exists,
-        # the must have completed successfully so just return.
-        if os.path.exists(destination):
-            logging.info("Retrieval completed by another processes. Skipping.")
-            os.close(fd)
-            return None
+        with utils.cleanup_on_error(
+            temp_destination,
+            "wb+",
+            opener=self.__lock_backend_destination,
+            rename=destination,
+        ) as temp_file:
+            # We now hold the lock. Either another process started the retrieval
+            # and died (or never started at all) or they completed. If the final file exists,
+            # they must have completed successfully so just return.
+            if os.path.exists(destination):
+                logging.info("Retrieval completed by another processes. Skipping.")
+                os.unlink(temp_destination)
+                return
 
-        with os.fdopen(fd, "wb+") as temp_file:
+            temp_file.truncate(0)  # might have been partially downloaded
             self._do_retrieve_image(store, spec, temp_file)
-
-            # Now that the entire file is retrieved, atomically move it to the destination.
-            # This avoids issues where a process was killed in the middle of retrieval
-            os.rename(temp_destination, destination)
 
             # There is a qemu hotkey to commit a 'snapshot' to the backing file.
             # Making the backend images read-only prevents this.
-            os.chmod(destination, stat.S_IREAD | stat.S_IRGRP | stat.S_IROTH)
+            os.fchmod(temp_file.fileno(), stat.S_IREAD | stat.S_IRGRP | stat.S_IROTH)
 
     def _do_retrieve_image(
         self, store: "ImageStore", spec: "ImageSpec", destination: IO[bytes]
     ) -> None:
         raise RuntimeError("Protocol did not implement '_do_retrieve_image'")
 
-    def __lock_backend_destination(self, dest: str) -> int:
+    @staticmethod
+    def __lock_backend_destination(dest: str, flags: int) -> int:
         # By default, python 'open' call will truncate writable files. We can't allow that
         # as we don't yet hold the flock (and there is no way to open _and_ flock in one
         # call). So we use os.open to avoid the truncate.
-        fd = os.open(dest, os.O_RDWR | os.O_CREAT)
+        flags &= ~os.O_TRUNC
+        fd = os.open(dest, flags)
 
         logging.debug(f"Attempting to acquire lock of '{dest}'")
 
