@@ -106,3 +106,19 @@ Scenario: Use an image with nonexistent base spec
      When the vm runs to completion
      Then the return code is 0
       And stdout contains "ata"
+
+  Scenario: Download a nonexistent image
+    Given a transient vm
+      And a disk image "djenerik/ahlpayn38:v3.0.2"
+      And the vm is prepare-only
+     When the transient command is run
+     Then the return code is 1
+      And there is no stack trace
+
+  Scenario: Leave off a version specifier
+    Given a transient vm
+      And a disk image "generic/alpine38"
+      And the vm is prepare-only
+     When the transient command is run
+     Then the return code is 1
+      And there is no stack trace

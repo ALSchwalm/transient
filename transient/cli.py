@@ -241,9 +241,9 @@ def run_impl(**kwargs: Any) -> None:
     try:
         trans.run()
         sys.exit(0)
-    except utils.TransientProcessError as e:
+    except utils.TransientError as e:
         print(e, file=sys.stderr)
-        sys.exit(e.returncode)
+        e.exit()
 
 
 @click.help_option("-h", "--help")

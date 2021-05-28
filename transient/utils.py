@@ -11,6 +11,7 @@ import subprocess
 import time
 import tempfile
 import uuid
+import sys
 
 try:
     import importlib.resources as pkg_resources
@@ -227,7 +228,32 @@ def run_check_retcode(
         raise TransientProcessError(cmd=e.cmd, stdout=e.stdout, stderr=e.stderr)
 
 
-class TransientProcessError(Exception):
+class TransientError(Exception):
+    """
+    A runtime error that we have decided to handle by aborting. Exists as a
+    separate class for one main reason:
+
+    We can catch errors of this type and print out a nice error message, while
+    unexpected ValueErrors and the like can continue making gross stack traces
+    to encourage issues submission and make debugging easier.
+    """
+
+    def __init__(self, msg: Optional[str] = None):
+        self.msg = msg
+
+    def __str__(self) -> str:
+        # Subclasses can override if they want to allow msg = None.
+        # Assert so that if it ever happens, we'll see a stack trace pointing
+        # our way back to the culprit.
+        assert self.msg is not None
+        return self.msg
+
+    def exit(self) -> None:
+        """Exit the program, with an appropriate error code"""
+        sys.exit(1)
+
+
+class TransientProcessError(TransientError):
     cmd: Optional[str]
     returncode: Optional[int]
     msg: Optional[str]
@@ -243,12 +269,12 @@ class TransientProcessError(Exception):
         stdout: Optional[bytes] = None,
         stderr: Optional[bytes] = None,
     ):
+        super().__init__(msg)
         if isinstance(cmd, list):
             self.cmd = " ".join(cmd)
         else:
             self.cmd = cmd
         self.returncode = returncode
-        self.msg = msg
 
         if stdout is not None:
             self.stdout = stdout.decode("utf-8")
@@ -273,3 +299,10 @@ class TransientProcessError(Exception):
         if self.stderr is not None:
             ret += f"\n----STDERR----\n{self.stderr}"
         return ret
+
+    def exit(self) -> None:
+        if self.returncode is not None:
+            errcode = self.returncode
+        else:
+            errcode = 1
+        sys.exit(errcode)
