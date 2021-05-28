@@ -14,3 +14,9 @@ Other versions may work, but are not tested. The standard test platform for
 versions of the `transient` dependencies:
 
 `apt-get install ssh qemu-system-x86 python3-pip`
+
+`transient` has an optional dependency on [rsync](https://rsync.samba.org/), which
+can be used for copying files to/from a virtual machine. `rsync` can be installed
+on ubuntu with:
+
+`apt-get install rsync`

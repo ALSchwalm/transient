@@ -92,6 +92,10 @@ For example `-copy-in-before path/on/host:/path/on/guest`
 after shutting down the VM. This will only copy from the first `-image` specified.
 For example `-copy-out-after path/on/host:/path/on/guest`
 
+- `-rsync`: Use rsync for `-copy-in-before` and `-copy-out-after` operations. This
+has the benefit of supporting differential transfers and better symbolic link support.
+Using this flag requires `rsync` be available.
+
 - `-qemu-bin-name NAME`: Use `NAME` instead of `qemu-system-x86_64` as the QEMU
 binary.
 
