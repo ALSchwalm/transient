@@ -155,7 +155,7 @@ def step_impl(context):
     context.vm_config["transient-args"].extend(["-ssh-console"])
 
 
-@given('extra argument "{arg}"')
+@given('an extra argument "{arg}"')
 def step_impl(context, arg):
     args = shlex.split(arg)
     context.vm_config["transient-args"].extend(args)

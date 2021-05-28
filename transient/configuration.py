@@ -206,6 +206,7 @@ class _TransientRunConfigSchema(_TransientConfigSchema):
     copy_in_before = fields.List(fields.Str(), missing=[])
     copy_out_after = fields.List(fields.Str(), missing=[])
     copy_timeout = fields.Int(allow_none=True)
+    rsync = fields.Bool(missing=False)
     prepare_only = fields.Bool(missing=False)
     qemu_bin_name = fields.Str(allow_none=True)
     qemu_args = fields.List(fields.Str(), missing=[])

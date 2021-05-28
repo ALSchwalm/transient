@@ -27,8 +27,8 @@ Feature: SSH Command
       And a ssh command "sleep 600"
       And a ssh console
       And a name "test-vm"
-      And extra argument "-ssh-option ControlMaster=yes"
-      And extra argument "-ssh-option ControlPath=myctrlsock"
+      And an extra argument "-ssh-option ControlMaster=yes"
+      And an extra argument "-ssh-option ControlPath=myctrlsock"
      When the vm runs
      Then the file "myctrlsock" appears within 180 seconds
       And "myctrlsock" is a socket

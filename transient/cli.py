@@ -153,6 +153,9 @@ def cli_entry(verbose: int) -> None:
     help="Copy a file or directory out of the VM after running "
     + "(/absolute/path/on/VM:path/on/host)",
 )
+@click.option(
+    "-rsync", is_flag=True, help="Use rsync for copy-in-before/copy-out-after operations"
+)
 @click.option("-name", type=str, help="Create a vm with the given name")
 @click.option(
     "-ssh-console",
