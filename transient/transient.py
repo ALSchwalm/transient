@@ -214,11 +214,11 @@ class TransientVm:
 
         if self.config.no_virtio_scsi:
             for image in self.vm_images:
-                new_args.extend(["-drive", f"file={image.path}"])
+                new_args.extend(["-drive", f"driver=qcow2,file={image.path},file.locking=on"])
         else:
             new_args.extend(["-device", "virtio-scsi-pci,id=scsi"])
             for idx, image in enumerate(self.vm_images):
-                new_args.extend(["-drive", f"file={image.path},if=none,id=hd{idx}"])
+                new_args.extend(["-drive", f"driver=qcow2,file={image.path},if=none,id=hd{idx},file.locking=on"])
                 new_args.extend(["-device", f"scsi-hd,drive=hd{idx}"])
 
         if self.__needs_ssh():

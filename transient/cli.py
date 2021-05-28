@@ -214,10 +214,15 @@ def cli_entry(verbose: int) -> None:
     is_flag=True,
     help="Only download/create vm disks. Do not start the vm",
 )
+@click.option(
+    "-skip-name-check",
+    is_flag=True,
+    help="Skip checking if a VM with the same name already exists -- only for those who live dangerously!",
+)
 @click.option("-config", "-c", nargs=1, help="Use a configuration file")
 @click.argument("QEMU_ARGS", nargs=-1)
 @cli_entry.command(name="run", cls=TransientRunCommand)
-def run_impl(**kwargs: Any) -> None:
+def run_impl(skip_name_check: bool, **kwargs: Any) -> None:
     """Run a transient virtual machine.
 
     QEMU_ARGS will be passed directly to QEMU.
@@ -232,6 +237,13 @@ def run_impl(**kwargs: Any) -> None:
     ) as e:
         print(e, file=sys.stderr)
         sys.exit(1)
+
+    if not skip_name_check:
+        instances = scan.find_transient_instances(name=config.name, timeout=None)
+        if len(instances) != 0:
+            print("There is another VM with this name already running!",
+                  file=sys.stderr)
+            sys.exit(1)
 
     store = image.ImageStore(
         backend_dir=config.image_backend, frontend_dir=config.image_frontend
