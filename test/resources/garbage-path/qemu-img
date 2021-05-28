@@ -1,0 +1,6 @@
+#!/usr/bin/env python3
+# A bogus version of qemu-img that spews binary garbage without doing any work.
+import sys
+import os
+
+sys.stdout.buffer.raw.write(os.urandom(64))

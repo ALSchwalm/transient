@@ -82,13 +82,16 @@ class GuestCommand(Command):
         )
 
         raw_stdout, raw_stderr = handle.communicate(timeout=self.run_timeout)
-        stdout = raw_stdout.decode("utf-8") if raw_stdout is not None else None
-        stderr = raw_stderr.decode("utf-8") if raw_stderr is not None else None
+        try:
+            stdout = raw_stdout.decode("utf-8") if raw_stdout is not None else None
+            stderr = raw_stderr.decode("utf-8") if raw_stderr is not None else None
+        except UnicodeDecodeError:
+            raise utils.TransientProcessError(msg="Got garbage from ssh", cmd=self.cmd)
 
         result = handle.poll()
         if result != 0:
             raise utils.TransientProcessError(
-                cmd=self.cmd, returncode=result, stdout=raw_stdout, stderr=raw_stderr
+                cmd=self.cmd, returncode=result, stdout=stdout, stderr=stderr
             )
         else:
             return stdout, stderr

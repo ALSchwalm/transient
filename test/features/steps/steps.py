@@ -7,6 +7,8 @@ import shlex
 from behave import *
 from hamcrest import *
 import stat
+import sys
+import re
 
 # Wait for a while, as we may be downloading the image as well
 VM_WAIT_TIME = 60 * 15
@@ -20,7 +22,10 @@ else:
 
 def build_command(context):
     config = context.vm_config
+    # ensure we are running dev version of transient, regardless of PATH.
     command = [
+        sys.executable,
+        "-m",
         "transient",
         *config["transient-early-args"],
         config["command"],
@@ -33,6 +38,7 @@ def build_command(context):
 def run_vm(context):
     command = build_command(context)
     print(command)
+    env = getattr(context, "environ", None)
 
     # Use temporary files rather than PIPE, because it may fill and block
     # before we start reading
@@ -43,6 +49,7 @@ def run_vm(context):
         stdin=subprocess.PIPE,
         stdout=context.raw_stdout,
         stderr=context.raw_stderr,
+        env=env,
     )
     context.handle = handle
     context.add_cleanup(handle.terminate)
@@ -293,8 +300,13 @@ def step_impl(context, command, name=None, flag=None):
     ]
     if flag is not None:
         command.append(flag)
+    env = getattr(context, "environ", None)
     handle = subprocess.Popen(
-        command, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE
+        command,
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        env=env,
     )
     stdout, stderr = handle.communicate(timeout=VM_WAIT_TIME)
     context.stdout = stdout.decode("utf-8")
@@ -315,7 +327,7 @@ def step_impl(context):
     wait_on_vm(context)
 
 
-@then("the return code is {code}")
+@then("the return code is {code:d}")
 def step_impl(context, code):
     if context.returncode != int(code):
         print("command stdout:")
@@ -323,6 +335,11 @@ def step_impl(context, code):
         print("command stderr:")
         print(context.stderr)
     assert_that(context.returncode, equal_to(int(code)))
+
+
+@then("the return code is nonzero")
+def step_impl(context):
+    assert_that(context.returncode, not_(equal_to(0)))
 
 
 @then("the vm is terminated")
@@ -338,6 +355,16 @@ def step_impl(context, expected_stdout):
 @then('stderr contains "{expected_stderr}"')
 def step_impl(context, expected_stderr):
     assert_that(context.stderr, contains_string(expected_stderr))
+
+
+@then('stderr matches "{regex}"')
+def step_impl(context, regex):
+    try:
+        r = re.compile(regex, re.IGNORECASE)
+    except re.error as e:
+        assert False, f"Bad regex {regex!r} in step: {e}"
+
+    assert r.search(context.stderr), f"{context.stderr!r} does not match {regex!r}"
 
 
 @then('the file "{name}" is in the backend')
@@ -387,3 +414,21 @@ def step_impl(context, file_path):
 @then("there is no stack trace")
 def step_impl(context):
     assert_that(context.stderr, not_(contains_string("Traceback")))
+
+
+@given('environment variable {name} is set to "{value}"')
+def _set_env_var(context, name, value):
+    try:
+        env = context.environ
+    except AttributeError:
+        env = os.environ.copy()
+
+    # note: expandvars expands with respect to the current environment, not
+    # with respect to context.environ.
+    env[name] = os.path.expandvars(value)
+    context.environ = env
+
+
+@given('environment variable {name} is set to ""')
+def step_impl(context, name):
+    _set_env_var(context, name, "")
