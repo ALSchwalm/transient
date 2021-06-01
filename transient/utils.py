@@ -33,6 +33,7 @@ from typing import (
     Tuple,
     Iterator,
     Callable,
+    no_type_check,
 )
 from . import static
 
@@ -421,7 +422,11 @@ class TransientProcessError(TransientError):
         sys.exit(errcode)
 
 
+# MyPI doesn't really support monkey patching like this. Don't check this
+# function for now to make the rest of the code happy.  Might be a solution
+# with custom protocols or something.
 @contextmanager
+@no_type_check
 def cleanup_on_error(
     *args: Any, rename: Optional[str] = None, **kwargs: Any
 ) -> Iterator[IO[Any]]:
