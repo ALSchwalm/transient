@@ -430,21 +430,38 @@ def cleanup_on_error(
     alone. If the rename parameter is given, then the file will be atomically
     renamed on success.
 
+    The returned file object will have the following extra parameters:
+        - rename: The file path after rename. May be cleared or changed.
+        - unlink(): Deletes the file, regardless of success or failure.
+
     If you want to use this to wrap a file descriptor, you might need to
     manually set fp.name, or use an opener function.
     """
 
     fp = open(*args, **kwargs)
+    unlinked = False
+
+    def unlink():
+        nonlocal unlinked
+        if unlinked:
+            return
+
+        unlinked = True
+        try:
+            os.unlink(fp.name)
+        except AttributeError:
+            logging.warning("Cannot remove temp file: We don't know it's name")
+        except OSError as e:
+            logging.warning("Cannot remove temp file %s: %s", fp.name, e)
+
     with fp:
         try:
+            fp.rename = rename
+            fp.unlink = unlink
             yield fp
-            if rename is not None:
+            rename = getattr(fp, "rename", None)
+            if not unlinked and rename is not None:
                 os.rename(fp.name, rename)
         except:
-            try:
-                os.unlink(fp.name)
-            except AttributeError:
-                logging.warning("Cannot remove temp file: We don't know it's name")
-            except OSError as e:
-                logging.warning("Cannot remove temp file %s: %s", fp.name, e)
+            unlink()
             raise

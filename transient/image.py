@@ -61,7 +61,7 @@ class BaseImageProtocol:
             # they must have completed successfully so just return.
             if os.path.exists(destination):
                 logging.info("Retrieval completed by another processes. Skipping.")
-                os.unlink(temp_destination)
+                temp_file.unlink()
                 return
 
             temp_file.truncate(0)  # might have been partially downloaded
