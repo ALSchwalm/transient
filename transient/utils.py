@@ -216,16 +216,30 @@ def run_check_retcode(
             stderr=stderr_location,
             check=True,
             timeout=timeout,
+            encoding="utf-8",
         )
-        stdout = handle.stdout.decode("utf-8") if handle.stdout is not None else None
-        stderr = handle.stderr.decode("utf-8") if handle.stderr is not None else None
-        return stdout, stderr
+        return handle.stdout, handle.stderr
     except subprocess.CalledProcessError as e:
         raise TransientProcessError(
             cmd=e.cmd, returncode=e.returncode, stdout=e.stdout, stderr=e.stderr
         )
     except subprocess.TimeoutExpired as e:
-        raise TransientProcessError(cmd=e.cmd, stdout=e.stdout, stderr=e.stderr)
+        raise TransientProcessError(
+            cmd=e.cmd, stdout=e.stdout, stderr=e.stderr,
+        )
+    except FileNotFoundError as e:
+        prog = repr(cmd[0])
+        raise TransientProcessError(msg=f"Required program {prog} is not installed",)
+    except OSError as e:
+        # covers "permission denied" and any other reason the OS might refuse
+        # to run the binary for us.
+        prog = repr(cmd[0])
+        err = os.strerror(e.errno)
+        raise TransientProcessError(msg=f"Could not run required program {prog}: {err}",)
+    except UnicodeDecodeError as e:
+        raise TransientProcessError(
+            msg=f"Command produced garbage", cmd=cmd,
+        )
 
 
 class TransientError(Exception):
@@ -266,8 +280,8 @@ class TransientProcessError(TransientError):
         cmd: Optional[Union[str, List[str]]] = None,
         returncode: Optional[int] = None,
         msg: Optional[str] = None,
-        stdout: Optional[bytes] = None,
-        stderr: Optional[bytes] = None,
+        stdout: Optional[str] = None,
+        stderr: Optional[str] = None,
     ):
         super().__init__(msg)
         if isinstance(cmd, list):
@@ -277,19 +291,21 @@ class TransientProcessError(TransientError):
         self.returncode = returncode
 
         if stdout is not None:
-            self.stdout = stdout.decode("utf-8")
+            self.stdout = stdout
         else:
             self.stdout = None
 
         if stderr is not None:
-            self.stderr = stderr.decode("utf-8")
+            self.stderr = stderr
         else:
             self.stderr = None
 
     def __str__(self) -> str:
         ret = ""
         if self.msg is not None:
-            ret += f"{self.msg}: "
+            ret += f"{self.msg}"
+            if self.cmd is not None:
+                ret += ": "
         if self.cmd is not None:
             ret += f"{self.cmd}"
         if self.returncode is not None:

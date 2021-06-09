@@ -36,6 +36,7 @@ jobs:
           - ssh_console
           - ssh_command
           - sshfs
+          - sanity
     container:
       image: ubuntu:20.04
       env:
@@ -69,6 +70,7 @@ jobs:
           - ssh_console
           - ssh_command
           - sshfs
+          - sanity
     steps:
     - uses: actions/checkout@v2
     - name: Install package dependencies
