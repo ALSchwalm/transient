@@ -1,14 +1,28 @@
-"""Supports the creation and validation of Transient-run configurations
-"""
-
-import logging
-import os
 import toml
 
+import argparse
+import marshmallow
 from marshmallow import Schema, fields, post_load, pre_load, ValidationError
-from typing import Any, Dict, List, MutableMapping, Optional
+from typing import (
+    List,
+    Any,
+    Optional,
+    Union,
+    Callable,
+    Iterable,
+    cast,
+    TypeVar,
+    Dict,
+    Generic,
+    Type,
+    TextIO,
+    Tuple,
+    Iterator,
+    Mapping,
+    NewType,
+)
 
-from . import qemu
+from . import args
 
 
 class ConfigFileParsingError(Exception):
@@ -53,7 +67,6 @@ class ConfigFileOptionError(Exception):
         msg = f"Invalid configuration file '{self.path}'"
         for invalid_option, errors in self.inner.normalized_messages().items():  # type: ignore
             # Revert the option to its preformatted state
-            invalid_option = invalid_option.replace("_", "-")
             line_number = self._line_number_of_option_in_config_file(invalid_option)
 
             formatted_errors = " ".join(errors)
@@ -79,7 +92,55 @@ class CLIArgumentError(Exception):
         return msg
 
 
-class Config(Dict[Any, Any]):
+def schema_from_argument_parser(parser: argparse.ArgumentParser) -> Type[Schema]:
+    def arg_to_field(arg: argparse.Action) -> fields.Field:
+        TYPE_TO_FIELD = {
+            int: fields.Int,
+            str: fields.Str,
+            bool: fields.Bool,
+            float: fields.Float,
+        }
+
+        # If no type is specified, use the type of default
+        if arg.type is not None:
+            assert isinstance(arg.type, type)
+            field = TYPE_TO_FIELD[arg.type]
+        else:
+            if arg.default is not None:
+                field = TYPE_TO_FIELD[type(arg.default)]
+            elif arg.const is not None:
+                field = TYPE_TO_FIELD[type(arg.const)]
+            else:
+                raise RuntimeError(f"No type, const, or default: {arg}")
+
+        # If this is an append action, we really want a list of these fields
+        if isinstance(arg, argparse._AppendAction) or arg.nargs in ("*", "+"):
+            return fields.List(field, missing=arg.default, allow_none=True)
+
+        return cast(fields.Field, field(missing=arg.default, allow_none=True))
+
+    class_name = "".join([word.capitalize() for word in parser.prog.split()]) + "Schema"
+    return cast(
+        Type[Schema],
+        type(
+            class_name,
+            (Schema,),
+            {
+                arg.dest: arg_to_field(arg)
+                for arg in parser._actions
+                if arg.dest != "help"
+            },
+        ),
+    )
+
+
+CreateSchema = schema_from_argument_parser(args.CREATE_PARSER)
+StartSchema = schema_from_argument_parser(args.START_PARSER)
+RunSchema = schema_from_argument_parser(args.RUN_PARSER)
+ImageBuildSchema = schema_from_argument_parser(args.IMAGE_BUILD_PARSER)
+
+
+class _Config(Dict[str, Any]):
     """Creates an argument dictionary that allows dot notation to access values
 
     Example:
@@ -89,315 +150,105 @@ class Config(Dict[Any, Any]):
 
     """
 
+    _schema: Schema
+
+    def __init__(self, schema: Schema, data: Mapping[str, Any], **kwargs: Any):
+        self._schema = schema
+        validated = schema.load(data, **kwargs)
+
+        dict.__init__(self, validated)
+
+        # Remove the setter after we init
+        setattr(self, "__setattr__", None)
+
     def __getattr__(self, attr: Any) -> Any:
-        return self.get(attr)
-
-    def __setattr__(self, key: Any, value: Any) -> None:
-        self.__setitem__(key, value)
-
-    def __delattr__(self, item: Any) -> None:
-        self.__delitem__(item)
+        return self[attr]
 
 
-class _TransientConfigSchema(Schema):
-    """Defines a common schema for the Transient configurations and validates
-       the fields during deserialization
-    """
-
-    # marshmallow's decorator pre_load() is untyped, forcing
-    # remove_unset_options() to be untyped. Therefore, we ignore it to
-    # silence the type checker
-    @pre_load  # type: ignore
-    def remove_unset_options(
-        self, config: Dict[Any, Any], **kwargs: Dict[Any, Any]
-    ) -> Dict[Any, Any]:
-        """Removes any option that was not set in the command line
-        """
-        config_without_unset_options = {}
-        for option, value in config.items():
-            if _option_was_set_in_cli(config[option]):
-                config_without_unset_options[option] = value
-
-        return config_without_unset_options
-
-    # marshmallow's decorator post_load() is untyped, forcing create_args()
-    # to be untyped. Therefore, we ignore it to silence the type checker
-    @post_load  # type: ignore
-    def create_config(self, data: Dict[Any, Any], **kwargs: Dict[Any, Any]) -> Config:
-        """Returns the Config dictionary after a schema is loaded and validated
-        """
-        return Config(**data)
+CreateConfig = NewType("CreateConfig", _Config)
+RunConfig = NewType("RunConfig", _Config)
+StartConfig = NewType("StartConfig", _Config)
+BuildConfig = NewType("BuildConfig", _Config)
 
 
-class _TransientBuildConfigSchema(_TransientConfigSchema):
-    """Defines the schema for the Transient-build configuration and validates
-       the fields during deserialization
-    """
-
-    image_backend = fields.Str(allow_none=True)
-    name = fields.Str(allow_none=True)
-    qmp_timeout = fields.Int(missing=qemu.QMP_DEFAULT_TIMEOUT, allow_none=True)
-    ssh_timeout = fields.Int(missing=90, allow_none=True)
-    local = fields.Bool(missing=False)
-    file = fields.Str(allow_none=True)
-    build_dir = fields.Str(allow_none=False)
-
-
-class _TransientSshConfigSchema(_TransientConfigSchema):
-    """Defines the schema for the Transient-ssh configuration and validates
-       the fields during deserialization
-
-       Note that this class is a wrapper to maintain symmetry with the other
-       schemas.
-    """
-
-    name = fields.Str(allow_none=False)
-    wait = fields.Bool(missing=False)
-    ssh_command = fields.Str(allow_none=True)
-    ssh_bin_name = fields.Str(missing="ssh", allow_none=True)
-    ssh_timeout = fields.Int(missing=90, allow_none=True)
-    ssh_user = fields.Str(missing="vagrant", allow_none=True)
-
-
-class _TransientListImageConfigSchema(_TransientConfigSchema):
-    """Defines the schema for the Transient-list-image configuration and
-       validates the fields during deserialization
-
-       Note that this class is a wrapper to maintain symmetry with the other
-       schemas.
-    """
-
-    image = fields.List(fields.Str(), missing=[])
-    image_frontend = fields.Str(allow_none=True)
-    image_backend = fields.Str(allow_none=True)
-    name = fields.Str(allow_none=True)
-
-
-class _TransientListVmConfigSchema(_TransientConfigSchema):
-    """Defines the schema for the Transient-list-vm configuration and
-       validates the fields during deserialization
-
-       Note that this class is a wrapper to maintain symmetry with the other
-       schemas.
-    """
-
-    name = fields.Str(allow_none=True)
-    with_ssh = fields.Bool(missing=False)
-
-
-class _TransientDeleteConfigSchema(_TransientListImageConfigSchema):
-    """Defines the schema for the Transient-delete configuration and validates
-       the fields during deserialization
-    """
-
-    force = fields.Bool(missing=False)
-
-
-class _TransientRunConfigSchema(_TransientConfigSchema):
-    """Defines the schema for the Transient-run configuration and validates the
-       fields during deserialization
-    """
-
-    image = fields.List(fields.Str(), missing=[])
-    image_frontend = fields.Str(allow_none=True)
-    image_backend = fields.Str(allow_none=True)
-    name = fields.Str(allow_none=True)
-    config = fields.Str(allow_none=True)
-    copy_in_before = fields.List(fields.Str(), missing=[])
-    copy_out_after = fields.List(fields.Str(), missing=[])
-    copy_timeout = fields.Int(allow_none=True)
-    rsync = fields.Bool(missing=False)
-    prepare_only = fields.Bool(missing=False)
-    qemu_bin_name = fields.Str(allow_none=True)
-    qemu_args = fields.List(fields.Str(), missing=[])
-    qmp_timeout = fields.Int(missing=qemu.QMP_DEFAULT_TIMEOUT, allow_none=True)
-    shutdown_timeout = fields.Int(missing=20)
-    ssh_net_driver = fields.Str(missing="virtio-net-pci")
-    ssh_command = fields.Str(allow_none=True)
-    ssh_bin_name = fields.Str(missing="ssh", allow_none=True)
-    ssh_port = fields.Int(allow_none=True)
-    ssh_timeout = fields.Int(missing=90, allow_none=True)
-    ssh_user = fields.Str(missing="vagrant", allow_none=True)
-    ssh_console = fields.Bool(missing=False)
-    ssh_with_serial = fields.Bool(missing=False)
-    ssh_option = fields.List(fields.Str(), missing=[])
-    shared_folder = fields.List(fields.Str(), missing=[])
-    sftp_bin_name = fields.Str(missing="sftp-server", allow_none=True)
-    no_virtio_scsi = fields.Bool(missing=False)
-
-
-def _option_was_set_in_cli(option: Any) -> bool:
-    """Returns True if an option was set in the command line
-    """
-    if option is None or option == () or option is False:
-        return False
-
-    return True
-
-
-def _parse_config_file(config_file_path: str) -> MutableMapping[str, Any]:
+def load_config_file(config_file: TextIO, path: str) -> CreateConfig:
     """Parses the given config file and returns the contents as a dictionary
     """
-    with open(config_file_path) as file:
-        config_file = file.read()
+    contents = config_file.read()
 
     try:
-        parsed_config_file = toml.loads(config_file)
+        parsed_config_file = toml.loads(contents)
     except toml.TomlDecodeError as error:
-        raise ConfigFileParsingError(error, config_file_path)
+        raise ConfigFileParsingError(error, path)
 
-    return parsed_config_file
+    try:
+        create_config = CreateConfig(
+            _Config(schema=CreateSchema(), data=parsed_config_file,)
+        )
+    except ValidationError as error:
+        raise ConfigFileOptionError(error, path)
 
-
-def _replace_hyphens_with_underscores_in_dict_keys(
-    dictionary: Dict[str, Any]
-) -> Dict[str, Any]:
-    """Replaces hyphens in the dictionary keys with underscores
-
-       This is the expected key format for _TransientConfigSchema
-    """
-    final_dict = {}
-    for k, v in dictionary.items():
-        # Perform this method recursively for sub-directories
-        if isinstance(dictionary[k], dict):
-            new_v = _replace_hyphens_with_underscores_in_dict_keys(v)
-            final_dict[k.replace("-", "_")] = new_v
-        else:
-            final_dict[k.replace("-", "_")] = v
-
-    return final_dict
+    return create_config
 
 
-def _expand_environment_variables_in_dict_values(
-    dictionary: Dict[str, Any]
-) -> Dict[str, Any]:
-    """Expands environment variables in the strings
-    """
-    final_dict = {}  # type: Dict[str, Any]
-    for k, v in dictionary.items():
-        # Perform this method recursively for sub-directories
-        if isinstance(v, dict):
-            final_dict[k] = _expand_environment_variables_in_dict_values(v)
-        elif isinstance(v, str):
-            final_dict[k] = os.path.expandvars(v)
-        else:
-            final_dict[k] = v
-
-    return final_dict
+def create_transient_run_config(cli_args: Dict[Any, Any]) -> RunConfig:
+    return RunConfig(_Config(schema=RunSchema(), data=cli_args))
 
 
-def _reformat_dict(dictionary: Dict[str, Any]) -> Dict[str, Any]:
-    """Reformats the dictionary using a formatting-pipeline
-    """
-    return _replace_hyphens_with_underscores_in_dict_keys(
-        _expand_environment_variables_in_dict_values(dictionary)
+def create_transient_start_config(cli_args: Dict[Any, Any]) -> StartConfig:
+    return StartConfig(_Config(schema=StartSchema(), data=cli_args))
+
+
+def create_transient_create_config(cli_args: Dict[Any, Any]) -> CreateConfig:
+    return CreateConfig(_Config(schema=CreateSchema(), data=cli_args))
+
+
+def create_transient_build_config(cli_args: Dict[Any, Any]) -> BuildConfig:
+    return BuildConfig(_Config(schema=ImageBuildSchema(), data=cli_args))
+
+
+def run_config_from_create_and_start(
+    create: CreateConfig, start: StartConfig
+) -> RunConfig:
+    new_config = dict(create)
+
+    for key, value in start.items():
+        if isinstance(value, list) and key in create:
+            # Lists are always additive
+            new_config[key] = create[key] + value
+        elif value is not None:
+            # StartConfig's have no defaults, so any value we get that is not
+            # None, must have been user specified (and therefore should be
+            # what we use in the resulting RunConfig)
+            new_config[key] = value
+
+    return RunConfig(_Config(schema=RunSchema(), data=new_config))
+
+
+def create_config_from_run(run: RunConfig, name: Optional[str] = None) -> CreateConfig:
+    new_cfg = dict(run)
+    if name is not None:
+        new_cfg["name"] = name
+    return CreateConfig(
+        _Config(schema=CreateSchema(), data=new_cfg, unknown=marshmallow.EXCLUDE)
     )
 
 
-def _load_config_file(config_file_path: str) -> Config:
-    """Reformats and validates the config file
-    """
-    parsed_config = _parse_config_file(config_file_path)
-
-    reformatted_config = _reformat_dict(parsed_config["transient"])
-    reformatted_config["qemu_args"] = parsed_config["qemu"]["qemu-args"]
-
-    transient_config_schema = _TransientRunConfigSchema()
-
-    try:
-        config: Config = transient_config_schema.load(reformatted_config)
-    except ValidationError as error:
-        raise ConfigFileOptionError(error, config_file_path)
-
-    return config
+def config_requires_state(config: RunConfig) -> bool:
+    return (
+        len(config.copy_in_before) > 0
+        or len(config.copy_out_after) > 0
+        or config.name is not None
+    )
 
 
-def _consolidate_cli_args_and_config_file(cli_args: Dict[Any, Any]) -> Dict[Any, Any]:
-    """Consolidates and returns the CLI arguments and the configuration file
-
-       Note that the CLI arguments take precedence over the configuration file
-    """
-    config = _load_config_file(cli_args["config"])
-
-    for option, value in config.items():
-        if (
-            option == "qemu_args" and cli_args[option] == ()
-        ) or not _option_was_set_in_cli(cli_args[option]):
-            cli_args[option] = value
-
-    return cli_args
+def config_requires_ssh(config: Union[RunConfig, CreateConfig]) -> bool:
+    return config_requires_ssh_console(config) or len(config.shared_folder) > 0
 
 
-def _create_transient_config_with_schema(
-    config: Dict[Any, Any], schema: _TransientConfigSchema
-) -> Config:
-    """Creates and validates the Config to be used by Transient given the
-       CLI arguments and schema
-    """
-    try:
-        validated_config: Config = schema.load(config)
-    except ValidationError as error:
-        raise CLIArgumentError(error)
-
-    return validated_config
-
-
-def create_transient_build_config(cli_args: Dict[Any, Any]) -> Config:
-    """Creates and validates the Config to be used by Transient-build given the
-       CLI arguments
-    """
-    schema = _TransientBuildConfigSchema()
-
-    return _create_transient_config_with_schema(cli_args, schema)
-
-
-def create_transient_ssh_config(cli_args: Dict[Any, Any]) -> Config:
-    """Creates and validates the Config to be used by Transient-ssh given the
-       CLI arguments
-    """
-    schema = _TransientSshConfigSchema()
-
-    return _create_transient_config_with_schema(cli_args, schema)
-
-
-def create_transient_list_image_config(cli_args: Dict[Any, Any]) -> Config:
-    """Creates and validates the Config to be used by Transient-list-image given
-       the CLI arguments
-    """
-    schema = _TransientListImageConfigSchema()
-
-    return _create_transient_config_with_schema(cli_args, schema)
-
-
-def create_transient_list_vm_config(cli_args: Dict[Any, Any]) -> Config:
-    """Creates and validates the Config to be used by Transient-list-vm given
-       the CLI arguments
-    """
-    schema = _TransientListVmConfigSchema()
-
-    return _create_transient_config_with_schema(cli_args, schema)
-
-
-def create_transient_delete_config(cli_args: Dict[Any, Any]) -> Config:
-    """Creates and validates the Config to be used by Transient-delete given
-       the CLI arguments
-    """
-    schema = _TransientDeleteConfigSchema()
-
-    return _create_transient_config_with_schema(cli_args, schema)
-
-
-def create_transient_run_config(cli_args: Dict[Any, Any]) -> Config:
-    """Creates and validates the Config to be used by Transient-run
-       given the CLI arguments and, if specified, a config file
-
-       Note that the CLI arguments take precedence over the config file
-    """
-    if cli_args["config"]:
-        config = _consolidate_cli_args_and_config_file(cli_args)
-    else:
-        config = cli_args
-
-    schema = _TransientRunConfigSchema()
-
-    return _create_transient_config_with_schema(config, schema)
+def config_requires_ssh_console(config: Union[RunConfig, CreateConfig]) -> bool:
+    return (
+        config.ssh_console is True
+        or config.ssh_command is not None
+        or config.ssh_with_serial is True
+    )

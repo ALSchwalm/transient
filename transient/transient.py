@@ -1,7 +1,7 @@
 from . import configuration
 from . import editor
 from . import qemu
-from . import image
+from . import store
 from . import utils
 from . import scan
 from . import ssh
@@ -18,7 +18,6 @@ import os
 import signal
 import subprocess
 import tempfile
-import uuid
 
 from typing import (
     cast,
@@ -42,6 +41,9 @@ else:
     Environ = os._Environ
 
 
+_TRANSIENT_RUN_LOCK_TIMEOUT = 1
+
+
 @enum.unique
 class TransientVmState(enum.Enum):
     WAITING = (1,)
@@ -50,53 +52,31 @@ class TransientVmState(enum.Enum):
 
 
 class TransientVm:
-    store: image.ImageStore
-    config: configuration.Config
-    vm_images: Sequence[image.BaseImageInfo]
+    vmstore: store.VmStore
+    config: configuration.RunConfig
+    vm_images: Sequence[store.BaseImageInfo]
     ssh_config: Optional[ssh.SshConfig]
     qemu_runner: Optional[qemu.QemuRunner]
     qemu_should_die: bool
     set_ssh_port: Optional[int]
+    vmstate: Optional[store.VmPersistentState]
+    state: TransientVmState
 
-    def __init__(self, config: configuration.Config, store: image.ImageStore) -> None:
-        self.store = store
+    def __init__(self, config: configuration.RunConfig, vmstore: store.VmStore) -> None:
         self.config = config
+        self.vmstore = vmstore
         self.vm_images = []
         self.ssh_config = None
         self.qemu_runner = None
         self.qemu_should_die = False
-        self.name = self.config.name or self.__generate_tmp_name()
         self.state = TransientVmState.WAITING
         self.data_tempfile = tempfile.TemporaryFile("wb+", buffering=0)
         self.set_ssh_port = None
+        self.vmstate = None
 
-    def __generate_tmp_name(self) -> str:
-        return str(uuid.uuid4())
-
-    def __create_images(self, names: List[str]) -> List[image.FrontendImageInfo]:
-        return [
-            self.store.create_vm_image(image_name, self.name, idx)
-            for idx, image_name in enumerate(names)
-        ]
-
-    def __use_backend_images(self, names: List[str]) -> List[image.BackendImageInfo]:
+    def __use_backend_images(self, names: List[str]) -> List[store.BackendImageInfo]:
         """Ensure the backend images are download for each image spec in 'names'"""
-        return [self.store.retrieve_image(name) for name in names]
-
-    def __needs_ssh(self) -> bool:
-        return (
-            self.config.ssh_console is True
-            or self.config.ssh_command is not None
-            or self.config.ssh_with_serial is True
-            or len(self.config.shared_folder) > 0
-        )
-
-    def __needs_ssh_console(self) -> bool:
-        return (
-            self.config.ssh_console is True
-            or self.config.ssh_with_serial is True
-            or self.config.ssh_command is not None
-        )
+        return [self.vmstore.backend.retrieve_image(name) for name in names]
 
     def __is_stateless(self) -> bool:
         """Checks if the VM does not require any persistent storage on disk"""
@@ -158,7 +138,7 @@ class TransientVm:
 
         # For now copy only to the first "-image" specified.
         vm_image = self.vm_images[0]
-        assert isinstance(vm_image, image.FrontendImageInfo)
+        assert isinstance(vm_image, store.FrontendImageInfo)
         assert vm_image.backend is not None
         logging.info(
             f"Copying from '{host_path}' to '{vm_image.backend.identifier}:{vm_absolute_path}'"
@@ -197,7 +177,7 @@ class TransientVm:
 
         # For now copy only to the first "-image" specified.
         vm_image = self.vm_images[0]
-        assert isinstance(vm_image, image.FrontendImageInfo)
+        assert isinstance(vm_image, store.FrontendImageInfo)
         assert vm_image.backend is not None
         logging.info(
             f"Copying from '{vm_image.backend.identifier}:{vm_absolute_path}' to '{host_path}'"
@@ -221,8 +201,8 @@ class TransientVm:
                 new_args.extend(["-drive", f"file={image.path},if=none,id=hd{idx}"])
                 new_args.extend(["-device", f"scsi-hd,drive=hd{idx},bootindex={idx}"])
 
-        if self.__needs_ssh():
-            if self.__needs_ssh_console():
+        if configuration.config_requires_ssh(self.config):
+            if configuration.config_requires_ssh_console(self.config):
                 new_args.extend(["-serial", "stdio", "-display", "none"])
 
             if self.config.ssh_port is None:
@@ -262,7 +242,7 @@ class TransientVm:
             port=self.set_ssh_port,
             user=self.config.ssh_user,
             ssh_bin_name=self.config.ssh_bin_name,
-            sftp_server_bin_name=self.config.sftp_server_bin_name,
+            sftp_bin_name=self.config.sftp_bin_name,
             extra_options=self.config.ssh_option,
         )
 
@@ -327,10 +307,9 @@ class TransientVm:
         # If the config name is None, this is a temporary VM,
         # so remove any generated frontend images. However, if the
         # VM is _totally_ stateless, there is nothing to remove
-        if self.config.name is None and not self.__is_stateless():
-            logging.info("Cleaning up temporary vm images")
-            for image in self.vm_images:
-                self.store.delete_image(image)
+        if self.config.name is None and self.vmstate is not None:
+            logging.info("Cleaning up temporary VM state")
+            self.vmstore.rm_vmstate(self.vmstate)
 
         if returncode != 0:
             logging.debug(f"VM exited with non-zero code: {returncode}")
@@ -340,9 +319,12 @@ class TransientVm:
     def __prepare_proc_data(self) -> None:
         data = {
             "name": self.name,
+            "vmstore": self.vmstore.path,
+            "primary_image": self.config.primary_image,
+            "stateless": self.__is_stateless(),
         }
 
-        if self.__needs_ssh():
+        if configuration.config_requires_ssh(self.config):
             data["ssh_port"] = self.set_ssh_port
 
         data_json_bytes = json.dumps(data).encode("utf-8")
@@ -355,23 +337,45 @@ class TransientVm:
         return qemu_env
 
     def run(self) -> None:
+        if self.__is_stateless() is False and (
+            self.config.name is None
+            or self.vmstore.vmstate_exists(self.config.name) is False
+        ):
+            create_config = configuration.create_config_from_run(self.config)
+            name = self.vmstore.create_vmstate(create_config)
+            self.name = name
+        else:
+            self.name = self.config.name
+
+        if self.__is_stateless() is True:
+            self.__do_run()
+        else:
+            try:
+                with self.vmstore.lock_vmstate_by_name(
+                    self.name, timeout=_TRANSIENT_RUN_LOCK_TIMEOUT
+                ) as state:
+                    self.vmstate = state
+                    self.__do_run()
+            except store.TransientVmStoreLockHeld:
+                raise utils.TransientError(
+                    msg=f"A VM named '{self.name}' is already running"
+                )
+
+    def __do_run(self) -> None:
         self.state = TransientVmState.RUNNING
 
         if not self.__is_stateless():
-            # First, download and setup any required disks
-            self.vm_images = self.__create_images(self.config.image)
+            assert self.vmstate is not None
+            self.vm_images = self.vmstate.images
         else:
             # If the VM is completely stateless, we don't need to make our
             # own frontend images, because we will be using the '-snapshot'
             # feature to effectively do that. So just ensure the backend
             # images have been downloaded.
-            self.vm_images = self.__use_backend_images(self.config.image)
+            self.vm_images = self.__use_backend_images([self.config.primary_image])
 
         if self.__needs_to_copy_in_files_before_running():
             self.__copy_in_files()
-
-        if self.config.prepare_only is True:
-            return self.__post_run(0)
 
         print("Finished preparation. Starting virtual machine")
 
@@ -380,7 +384,7 @@ class TransientVm:
 
         # If we are using the SSH console, we need to do _something_ with QEMU output.
         qemu_quiet, qemu_interactive = False, True
-        if self.__needs_ssh_console():
+        if configuration.config_requires_ssh_console(self.config):
             qemu_interactive = False
             qemu_quiet = not self.config.ssh_with_serial
 
@@ -392,7 +396,7 @@ class TransientVm:
             bin_name=self.config.qemu_bin_name,
             quiet=qemu_quiet,
             interactive=qemu_interactive,
-            qmp_connectable=self.__needs_ssh(),
+            qmp_connectable=configuration.config_requires_ssh(self.config),
             env=self.__build_qemu_environment(),
             pass_fds=(self.data_tempfile.fileno(),),
         )
@@ -407,7 +411,7 @@ class TransientVm:
             logging.error("QEMU Process has died. Exiting")
             return self.__post_run(qemu_returncode)
 
-        if self.__needs_ssh():
+        if configuration.config_requires_ssh(self.config):
             self.__prepare_ssh()
 
         sshfs_threads = []
@@ -435,7 +439,7 @@ class TransientVm:
         # we can write out the proc data to our tempfile
         self.__prepare_proc_data()
 
-        if self.__needs_ssh_console():
+        if configuration.config_requires_ssh_console(self.config):
             # Note that we always return the SSH exit code, even if the guest failed to
             # shut down. This ensures the shutdown_timeout=0 case is handled as expected.
             # (i.e., it returns the SSH code instead of a QEMU error)

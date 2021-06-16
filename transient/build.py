@@ -12,7 +12,7 @@ import subprocess
 from . import configuration
 from . import editor
 from . import qemu
-from . import image
+from . import store
 from . import utils
 from . import ssh
 from . import static
@@ -367,19 +367,21 @@ T = TypeVar("T")
 
 
 class ImageBuilder:
-    config: configuration.Config
+    config: configuration.BuildConfig
     build_dir: str
-    store: image.ImageStore
+    imgstore: store.BackendImageStore
     instructions: List[ImageInstruction]
     qemu: qemu.QemuRunner
     from_instruction: FromInstruction
     chroot_ready: bool
     editor: editor.ImageEditor
 
-    def __init__(self, config: configuration.Config, store: image.ImageStore) -> None:
+    def __init__(
+        self, config: configuration.BuildConfig, imgstore: store.BackendImageStore
+    ) -> None:
         self.chroot_ready = False
         self.config = config
-        self.store = store
+        self.imgstore = imgstore
 
         if config.file is None:
             imagefile_path = os.path.join(self.config.build_dir, "Imagefile")
@@ -478,16 +480,16 @@ class ImageBuilder:
     def __prepare_new_image(self) -> str:
         self.__print_step(self.from_instruction)
 
-        name = image.storage_safe_encode(self.config.name)
+        name = store.storage_safe_encode(self.config.name)
         if self.config.local is True:
             # If this is a local (non-backend) build, then use the build dir for
             # the working image as well, so we can atomically rename at the end
             working = os.path.join(self.config.build_dir, f"{name}.working")
         else:
-            working = os.path.join(self.store.working, name)
+            working = os.path.join(self.imgstore.working, name)
 
         if not self.__is_from_scratch():
-            existing = self.store.retrieve_image(self.from_instruction.source).path
+            existing = self.imgstore.retrieve_image(self.from_instruction.source).path
             logging.info(f"Copying backend file as base of new image at '{working}'")
             with open(existing, "rb") as source, open(working, "wb") as dest:
                 # Get the size of the source for the progress bar
@@ -502,7 +504,7 @@ class ImageBuilder:
 
             utils.run_check_retcode(
                 [
-                    self.store.qemu_img_bin,
+                    self.imgstore.qemu_img_bin,
                     "create",
                     "-f",
                     "qcow2",
@@ -655,10 +657,10 @@ class ImageBuilder:
         if self.config.local is True:
             destination = os.path.join(self.config.build_dir, f"{self.config.name}.qcow2")
         else:
-            destination = self.store.backend_path(image.ImageSpec(self.config.name))
+            destination = self.imgstore.backend_path(store.ImageSpec(self.config.name))
 
         # Make the new image read-only before moving.
-        os.chmod(new_image, stat.S_IREAD | stat.S_IRGRP | stat.S_IROTH)
+        utils.make_path_readonly(new_image)
         os.rename(new_image, destination)
 
         return destination

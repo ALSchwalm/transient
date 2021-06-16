@@ -1,21 +1,29 @@
-import beautifultable  # type: ignore
+import collections
+import contextlib
 import json
 import logging
 import fcntl
 import itertools
 import os
-import stat
 import progressbar  # type: ignore
 import re
 import requests
+import shutil
+import stat
 import subprocess
 import tarfile
 import tempfile
+import time
+import toml
 import urllib.parse
+import uuid
 
+from . import configuration
 from . import utils
-from typing import cast, Optional, List, Dict, Any, Union, Tuple, IO, Pattern
+from typing import cast, Optional, List, Dict, Any, Union, Tuple, IO, Pattern, Iterator
 
+# Time to wait in seconds between attempts to acquire vmstate lock
+_VMSTATE_LOCK_INTERVAL = 0.1
 
 _BLOCK_TRANSFER_SIZE = 64 * 1024  # 64KiB
 
@@ -44,12 +52,12 @@ class BaseImageProtocol:
         return self.regex.match(candidate) is not None
 
     def retrieve_image(
-        self, store: "ImageStore", spec: "ImageSpec", destination: str
+        self, store: "BackendImageStore", spec: "ImageSpec", destination: str
     ) -> None:
         # Do partial downloads into the working directory in the backend
         dest_name = os.path.basename(destination)
         temp_destination = os.path.join(store.working, dest_name)
-        fd = self.__lock_backend_destination(temp_destination)
+        fd = utils.lock_path(temp_destination)
 
         # We now hold the lock. Either another process started the retrieval
         # and died (or never started at all) or they completed. If the final file exists,
@@ -68,35 +76,12 @@ class BaseImageProtocol:
 
             # There is a qemu hotkey to commit a 'snapshot' to the backing file.
             # Making the backend images read-only prevents this.
-            os.chmod(destination, stat.S_IREAD | stat.S_IRGRP | stat.S_IROTH)
+            utils.make_path_readonly(destination)
 
     def _do_retrieve_image(
-        self, store: "ImageStore", spec: "ImageSpec", destination: IO[bytes]
+        self, store: "BackendImageStore", spec: "ImageSpec", destination: IO[bytes]
     ) -> None:
         raise RuntimeError("Protocol did not implement '_do_retrieve_image'")
-
-    def __lock_backend_destination(self, dest: str) -> int:
-        # By default, python 'open' call will truncate writable files. We can't allow that
-        # as we don't yet hold the flock (and there is no way to open _and_ flock in one
-        # call). So we use os.open to avoid the truncate.
-        fd = os.open(dest, os.O_RDWR | os.O_CREAT)
-
-        logging.debug(f"Attempting to acquire lock of '{dest}'")
-
-        # This will block if another transient process is doing the retrieval. Once this
-        # function returns, the lock is held until 'fd' is closed.
-        try:
-            # First attempt to acquire the lock non-blocking
-            fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
-        except OSError:
-            # OSError indicates the lock is held by someone else. Print a notice and then
-            # block.
-            logging.info(f"Retrieval of '{dest}' already in progress. Waiting.")
-            fcntl.flock(fd, fcntl.LOCK_EX)
-
-        logging.debug(f"Lock of '{dest}' acquired")
-
-        return fd
 
 
 class VagrantImageProtocol(BaseImageProtocol):
@@ -133,7 +118,7 @@ class VagrantImageProtocol(BaseImageProtocol):
         )
 
     def _do_retrieve_image(
-        self, store: "ImageStore", spec: "ImageSpec", destination: IO[bytes]
+        self, store: "BackendImageStore", spec: "ImageSpec", destination: IO[bytes]
     ) -> None:
         try:
             box_name, version = spec.source.split(":", 1)
@@ -192,39 +177,12 @@ class VagrantImageProtocol(BaseImageProtocol):
         logging.info("Image extraction completed.")
 
 
-class FrontendImageProtocol(BaseImageProtocol):
-    def __init__(self) -> None:
-        super().__init__(re.compile(r"frontend", re.IGNORECASE))
-
-    def _do_retrieve_image(
-        self, store: "ImageStore", spec: "ImageSpec", destination: IO[bytes]
-    ) -> None:
-        vm_name, source = spec.source.split("@", 1)
-
-        print(f"Copying image '{source}' for VM '{vm_name}' as new backend '{spec.name}'")
-
-        candidates = store.frontend_image_list(vm_name, source)
-        if len(candidates) == 0:
-            raise utils.TransientError(f"No backend image '{source}' for VM '{vm_name}'")
-        elif len(candidates) > 1:
-            # This should be impossible, but check anyway
-            raise utils.TransientError(
-                f"Ambiguous backend image '{source}' for VM '{vm_name}'"
-            )
-        frontend_image = candidates[0]
-        with open(frontend_image.path, "rb") as existing_file:
-            frontend_image_size = os.path.getsize(frontend_image.path)
-            utils.copy_with_progress(existing_file, destination, frontend_image_size)
-
-        logging.info("Image copy complete.")
-
-
 class FileImageProtocol(BaseImageProtocol):
     def __init__(self) -> None:
         super().__init__(re.compile(r"file", re.IGNORECASE))
 
     def _do_retrieve_image(
-        self, store: "ImageStore", spec: "ImageSpec", destination: IO[bytes]
+        self, store: "BackendImageStore", spec: "ImageSpec", destination: IO[bytes]
     ) -> None:
 
         print(f"Copying '{spec.source}' as new backend '{spec.name}'")
@@ -242,7 +200,7 @@ class HttpImageProtocol(BaseImageProtocol):
         super().__init__(re.compile(r"http", re.IGNORECASE))
 
     def _do_retrieve_image(
-        self, store: "ImageStore", spec: "ImageSpec", destination: IO[bytes]
+        self, store: "BackendImageStore", spec: "ImageSpec", destination: IO[bytes]
     ) -> None:
 
         print(f"Downloading image from '{spec.source}'")
@@ -268,7 +226,6 @@ class HttpImageProtocol(BaseImageProtocol):
 _IMAGE_SPEC = re.compile(r"^([^,]+?)(?:,(.+?)=(.+))?$")
 _IMAGE_PROTOCOLS = [
     VagrantImageProtocol(),
-    FrontendImageProtocol(),
     HttpImageProtocol(),
     FileImageProtocol(),
 ]
@@ -299,7 +256,7 @@ class ImageSpec:
 
 
 class BaseImageInfo:
-    store: "ImageStore"
+    store: "BackendImageStore"
     virtual_size: int
     actual_size: int
     filename: str
@@ -307,7 +264,7 @@ class BaseImageInfo:
     path: str
     image_info: Dict[str, Any]
 
-    def __init__(self, store: "ImageStore", path: str) -> None:
+    def __init__(self, store: "BackendImageStore", path: str) -> None:
         stdout, _ = utils.run_check_retcode(
             [store.qemu_img_bin, "info", "-U", "--output=json", path]
         )
@@ -324,7 +281,7 @@ class BaseImageInfo:
 class BackendImageInfo(BaseImageInfo):
     identifier: str
 
-    def __init__(self, store: "ImageStore", path: str) -> None:
+    def __init__(self, store: "BackendImageStore", path: str) -> None:
         super().__init__(store, path)
         self.identifier = storage_safe_decode(self.filename)
 
@@ -334,7 +291,7 @@ class FrontendImageInfo(BaseImageInfo):
     disk_number: int
     backend: Optional[BackendImageInfo]
 
-    def __init__(self, store: "ImageStore", path: str):
+    def __init__(self, store: "BackendImageStore", path: str):
         super().__init__(store, path)
         vm_name, number, image = self.filename.split("-")
         self.vm_name = storage_safe_decode(vm_name)
@@ -351,90 +308,22 @@ class FrontendImageInfo(BaseImageInfo):
                 raise
 
 
-def format_frontend_image_table(
-    list: List[FrontendImageInfo],
-) -> beautifultable.BeautifulTable:
-    table = beautifultable.BeautifulTable()
-    table.column_headers = [
-        "VM Name",
-        "Backend Image",
-        "Disk Num",
-        "Real Size",
-        "Virt Size",
-    ]
-    table.set_style(beautifultable.BeautifulTable.STYLE_BOX)
-    table.column_alignments["VM Name"] = beautifultable.BeautifulTable.ALIGN_LEFT
-    table.column_alignments["Backend Image"] = beautifultable.BeautifulTable.ALIGN_LEFT
-    table.column_alignments["Disk Num"] = beautifultable.BeautifulTable.ALIGN_RIGHT
-    table.column_alignments["Real Size"] = beautifultable.BeautifulTable.ALIGN_RIGHT
-    table.column_alignments["Virt Size"] = beautifultable.BeautifulTable.ALIGN_RIGHT
-    for image in list:
-        if image.backend is None:
-            backend_identifier = "--NOT FOUND--"
-        else:
-            backend_identifier = image.backend.identifier
-        table.append_row(
-            [
-                image.vm_name,
-                backend_identifier,
-                image.disk_number,
-                utils.format_bytes(image.actual_size),
-                utils.format_bytes(image.virtual_size),
-            ]
-        )
-    return table
-
-
-def format_backend_image_table(
-    list: List[BackendImageInfo],
-) -> beautifultable.BeautifulTable:
-    table = beautifultable.BeautifulTable()
-    table.column_headers = ["Image Name", "Real Size", "Virt Size"]
-    table.set_style(beautifultable.BeautifulTable.STYLE_BOX)
-    table.column_alignments["Image Name"] = beautifultable.BeautifulTable.ALIGN_LEFT
-    table.column_alignments["Real Size"] = beautifultable.BeautifulTable.ALIGN_RIGHT
-    table.column_alignments["Virt Size"] = beautifultable.BeautifulTable.ALIGN_RIGHT
-    for image in list:
-        table.append_row(
-            [
-                image.identifier,
-                utils.format_bytes(image.actual_size),
-                utils.format_bytes(image.virtual_size),
-            ]
-        )
-    return table
-
-
-def format_image_table(
-    list: List[BaseImageInfo],
-) -> Tuple[beautifultable.BeautifulTable, beautifultable.BeautifulTable]:
-    frontend = [img for img in list if isinstance(img, FrontendImageInfo)]
-    backend = [img for img in list if isinstance(img, BackendImageInfo)]
-    return (format_frontend_image_table(frontend), format_backend_image_table(backend))
-
-
-class ImageStore:
+class BackendImageStore:
     backend: str
-    frontend: str
     working: str
     qemu_img_bin: str
 
-    def __init__(
-        self, *, backend_dir: Optional[str] = None, frontend_dir: Optional[str] = None
-    ) -> None:
+    def __init__(self, *, path: Optional[str] = None) -> None:
 
-        self.backend = os.path.abspath(backend_dir or self.__default_backend_dir())
-        self.frontend = os.path.abspath(frontend_dir or self.__default_frontend_dir())
+        self.backend = os.path.abspath(path or utils.default_backend_dir())
         self.working = self.__working_dir()
         self.qemu_img_bin = self.__default_qemu_img_bin()
 
         if not os.path.exists(self.backend):
-            logging.debug(f"Creating missing ImageStore backend at '{self.backend}'")
+            logging.debug(
+                f"Creating missing BackendImageStore backend at '{self.backend}'"
+            )
             os.makedirs(self.backend, exist_ok=True)
-
-        if not os.path.exists(self.frontend):
-            logging.debug(f"Creating missing ImageStore frontend at '{self.frontend}'")
-            os.makedirs(self.frontend, exist_ok=True)
 
         if not os.path.exists(self.working):
             os.makedirs(self.working, exist_ok=True)
@@ -443,20 +332,6 @@ class ImageStore:
         # Note that the working directory must be in the same filesystem as
         # the backend, to allow atomic movement of files.
         return os.path.join(self.backend, ".working")
-
-    def __default_backend_dir(self) -> str:
-        env_specified = os.getenv("TRANSIENT_BACKEND")
-        if env_specified is not None:
-            return env_specified
-        home = utils.transient_data_home()
-        return os.path.join(home, "backend")
-
-    def __default_frontend_dir(self) -> str:
-        env_specified = os.getenv("TRANSIENT_FRONTEND")
-        if env_specified is not None:
-            return env_specified
-        home = utils.transient_data_home()
-        return os.path.join(home, "frontend")
 
     def __default_qemu_img_bin(self) -> str:
         return "qemu-img"
@@ -489,68 +364,6 @@ class ImageStore:
         logging.info(f"Finished retrieving image: {spec.name}")
         return BackendImageInfo(self, destination)
 
-    def create_vm_image(
-        self, image_spec: str, vm_name: str, num: int
-    ) -> FrontendImageInfo:
-        backing_image = self.retrieve_image(image_spec)
-        safe_vmname = storage_safe_encode(vm_name)
-        safe_image_identifier = storage_safe_encode(backing_image.identifier)
-        new_image_path = os.path.join(
-            self.frontend, f"{safe_vmname}-{num}-{safe_image_identifier}"
-        )
-
-        if os.path.exists(new_image_path):
-            logging.info(f"VM image '{new_image_path}' already exists. Skipping create.")
-            return FrontendImageInfo(self, new_image_path)
-
-        logging.info(
-            f"Creating VM Image '{new_image_path}' from backing image '{backing_image.path}'"
-        )
-
-        utils.run_check_retcode(
-            [
-                self.qemu_img_bin,
-                "create",
-                "-f",
-                "qcow2",
-                "-o",
-                f"backing_file={backing_image.path}",
-                new_image_path,
-            ]
-        )
-
-        logging.info(f"VM Image '{new_image_path}' created")
-        return FrontendImageInfo(self, new_image_path)
-
-    def frontend_image_list(
-        self, vm_name: Optional[str] = None, image_identifier: Optional[str] = None
-    ) -> List[FrontendImageInfo]:
-        images = []
-        for candidate in os.listdir(self.frontend):
-            path = os.path.join(self.frontend, candidate)
-            if not os.path.isfile(path) or not _VM_IMAGE_REGEX.match(candidate):
-                continue
-            try:
-                image_info = FrontendImageInfo(self, path)
-            except utils.TransientProcessError:
-                # If the path doesn't exist anymore, then we raced with something
-                # that deleted the file, so just continue
-                if not os.path.exists(path):
-                    continue
-                else:
-                    raise
-            if vm_name is not None:
-                if image_info.vm_name != vm_name:
-                    continue
-            if image_identifier is not None:
-                if (
-                    image_info.backend is not None
-                    and image_info.backend.identifier != image_identifier
-                ):
-                    continue
-            images.append(image_info)
-        return images
-
     def backend_image_list(
         self, image_identifier: Optional[str] = None
     ) -> List[BackendImageInfo]:
@@ -574,3 +387,202 @@ class ImageStore:
 
     def delete_image(self, image: BaseImageInfo) -> None:
         os.remove(image.path)
+
+    def commit_vmstate(self, state: "VmPersistentState", name: str) -> BackendImageInfo:
+        # FIXME: the first image is not necessarily the primary image
+        primary_image = state.images[0]
+
+        safe_name = storage_safe_encode(name)
+
+        destination = os.path.join(self.backend, safe_name)
+        working = os.path.join(self.working, safe_name)
+
+        fd = utils.lock_path(working)
+        if os.path.exists(destination):
+            raise utils.TransientError(
+                msg=f"An image with the name '{name}' already exists"
+            )
+
+        with os.fdopen(fd, "wb") as _:
+            print(f"Converting vm image to new backend image {name}")
+
+            # TODO: maybe investigate doing this via rebase? That seems to produce
+            # smaller disk sizes
+            utils.run_check_retcode(
+                [
+                    self.qemu_img_bin,
+                    "convert",
+                    primary_image.path,
+                    "-O" "qcow2",
+                    "-p",
+                    working,
+                ],
+                capture_stdout=False,
+                capture_stderr=False,
+            )
+
+            utils.make_path_readonly(working)
+            os.rename(working, destination)
+
+        return BackendImageInfo(self, destination)
+
+    def contains_image(self, name: str) -> bool:
+        safe_name = storage_safe_encode(name)
+        return os.path.exists(os.path.join(self.backend, safe_name))
+
+
+class VmPersistentState:
+    name: str
+    images: List[FrontendImageInfo]
+    config: configuration.CreateConfig
+    store: "VmStore"
+
+    def __init__(
+        self,
+        name: str,
+        images: List[FrontendImageInfo],
+        config: configuration.CreateConfig,
+        vmstore: "VmStore",
+    ):
+        self.name = name
+        self.images = images
+        self.config = config
+        self.store = vmstore
+
+
+class VmStore:
+    backend: BackendImageStore
+    path: str
+
+    def __init__(self, *, backend: BackendImageStore, path: Optional[str] = None) -> None:
+        self.backend = backend
+        self.path = utils.default_vmstore_dir()
+
+        if not os.path.exists(self.path):
+            logging.debug(f"Creating missing VmStore backend at '{self.path}'")
+            os.makedirs(self.path, exist_ok=True)
+
+    def __vm_dir(self, name: str) -> str:
+        return os.path.join(self.path, name)
+
+    def create_vmstate(self, config: configuration.CreateConfig) -> str:
+        # TODO: this should be made in a tmpdir and moved once finished
+        if config.name is None:
+            name = str(uuid.uuid4())
+        else:
+            name = config.name
+
+        vmdir = self.__vm_dir(name)
+
+        if os.path.exists(vmdir):
+            raise utils.TransientError(f"A VM with name {name} already exists")
+
+        logging.debug(f"Creating vmdir at {vmdir}")
+        os.mkdir(vmdir)
+
+        logging.info(f"Creating vm images for vm id={id}")
+        images = [self.__create_vm_image(config.primary_image, name, 0)]
+
+        self.__create_vm_config(name, config)
+
+        return name
+
+    def unsafe_rm_vmstate_by_name(self, name: str) -> None:
+        shutil.rmtree(self.__vm_dir(name))
+
+    def rm_vmstate(self, state: VmPersistentState) -> None:
+        shutil.rmtree(self.__vm_dir(state.name))
+
+    def rm_vmstate_by_name(self, name: str, lock_timeout: Optional[float] = None) -> None:
+        with self.lock_vmstate_by_name(name, timeout=lock_timeout) as _state:
+            shutil.rmtree(self.__vm_dir(name))
+
+    def __create_vm_config(
+        self, vm_name: str, config: configuration.CreateConfig
+    ) -> None:
+        with open(os.path.join(self.__vm_dir(vm_name), "config"), "w") as f:
+            # Always keep the keys in order when we dump them
+            f.write(toml.dumps(collections.OrderedDict(sorted(config.items()))))
+
+    def __create_vm_image(
+        self, image_spec: str, vm_name: str, num: int
+    ) -> FrontendImageInfo:
+        backing_image = self.backend.retrieve_image(image_spec)
+        safe_vmname = storage_safe_encode(vm_name)
+        safe_image_identifier = storage_safe_encode(backing_image.identifier)
+        new_image_path = os.path.join(
+            self.__vm_dir(vm_name), f"{safe_vmname}-{num}-{safe_image_identifier}"
+        )
+
+        if os.path.exists(new_image_path):
+            logging.info(f"VM image '{new_image_path}' already exists. Skipping create.")
+            return FrontendImageInfo(self.backend, new_image_path)
+
+        logging.info(
+            f"Creating VM Image '{new_image_path}' from backing image '{backing_image.path}'"
+        )
+
+        utils.run_check_retcode(
+            [
+                self.backend.qemu_img_bin,
+                "create",
+                "-f",
+                "qcow2",
+                "-o",
+                f"backing_file={backing_image.path}",
+                new_image_path,
+            ]
+        )
+
+        logging.info(f"VM Image '{new_image_path}' created")
+        return FrontendImageInfo(self.backend, new_image_path)
+
+    def vmstate_exists(self, name: str) -> bool:
+        return os.path.exists(self.__vm_dir(name))
+
+    def vmstates(
+        self, lock_timeout: Optional[float] = None
+    ) -> Iterator[VmPersistentState]:
+        for name in os.listdir(self.path):
+            try:
+                with self.lock_vmstate_by_name(name, timeout=lock_timeout) as state:
+                    yield state
+            except TransientVmStoreLockHeld:
+                continue
+
+    @contextlib.contextmanager
+    def lock_vmstate_by_name(
+        self, name: str, timeout: Optional[float] = None
+    ) -> Iterator[VmPersistentState]:
+        config = None
+        dir = self.__vm_dir(name)
+
+        if not os.path.exists(dir):
+            raise utils.TransientError(msg=f"No VM with name '{name}' found")
+        elif not os.path.exists(os.path.join(dir, "config")):
+            raise utils.TransientError(
+                msg=f"VM with name '{name}' is missing configuration"
+            )
+
+        cfg_path = os.path.join(dir, "config")
+
+        try:
+            fd = utils.lock_path(cfg_path, timeout)
+        except OSError:
+            raise TransientVmStoreLockHeld()
+
+        with os.fdopen(fd, "r") as cfg_file:
+            config = configuration.load_config_file(cfg_file, cfg_path)
+
+            images = []
+            for filename in os.listdir(dir):
+                path = os.path.join(dir, filename)
+                if filename == "config":
+                    continue
+                else:
+                    images.append(FrontendImageInfo(self.backend, path))
+            yield VmPersistentState(name=name, config=config, images=images, vmstore=self)
+
+
+class TransientVmStoreLockHeld(utils.TransientError):
+    pass

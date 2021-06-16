@@ -1,126 +1,44 @@
-import click
+import argparse
+import beautifultable  # type: ignore
 import logging
+import os
 import signal
 import sys
+import toml
+import uuid
 
+from . import args
 from . import configuration
 from . import build
-from . import image
+from . import store
 from . import scan
 from . import ssh
 from . import transient
 from . import utils
+from . import qemu
 from . import __version__
 
-from typing import List, Any, Optional, Union, Callable, Iterable
-
-
-def _get_version(
-    ctx: click.Context, param: Union[click.Option, click.Parameter], value: Any
-) -> None:
-    if not value:
-        return
-    click.echo(f"transient {__version__}", color=ctx.color)
-    ctx.exit()
-
-
-_common_options = [
-    click.option(
-        "-image-frontend", type=str, help="The location to place per-vm disk images",
-    ),
-    click.option(
-        "-image-backend",
-        type=str,
-        help="The location to place the shared, read-only backing disk images",
-    ),
-    click.option(
-        "-image",
-        multiple=True,
-        type=str,
-        help="Disk image to use (this option can be repeated)",
-    ),
-]
-
-_ssh_options = [
-    click.option("-ssh-user", "-u", type=str, help="User to pass to SSH"),
-    click.option("-ssh-bin-name", type=str, help="SSH binary to use"),
-    click.option(
-        "-ssh-timeout", type=int, help="Time to wait for SSH connection before failing",
-    ),
-    click.option(
-        "-ssh-command", "-cmd", type=str, help="Run an ssh command instead of a console",
-    ),
-    click.option(
-        "-ssh-option", "-o", multiple=True, type=str, help="Pass an option to SSH",
-    ),
-]
-
-
-def with_options(options: List[Callable[..., Any]]) -> Callable[..., Any]:
-    def inner(func: Callable[..., Any]) -> Callable[..., Any]:
-        for option in reversed(options):
-            func = option(func)
-        return func
-
-    return inner
-
-
-class TransientRunCommand(click.Command):
-    def format_usage(self, ctx: click.Context, formatter: click.HelpFormatter) -> None:
-        formatter.write_usage(ctx.command_path, "[OPTIONS] -- [QEMU_ARGS]...")
-
-    # Override the normal Command parser to use the Transient one
-    def make_parser(self, ctx: click.Context) -> click.parser.OptionParser:
-        parser = TransientOptionParser(ctx)
-        for param in self.get_params(ctx):
-            param.add_to_parser(parser, ctx)
-        return parser
-
-
-class TransientOptionParser(click.parser.OptionParser):
-    # This class is identical to the standard Click OptionParser, except that it
-    # interprets _every_ argument as a longopt. This prevents the parser from
-    # getting confused on things like '-ssh-foobar' and parsing it as '-s sh-foobar'
-    # (which later fails because 'sh-foobar' is passed as a shared folder spec)
-    def add_option(
-        self,
-        opts: Iterable[str],
-        dest: str,
-        action: Optional[str] = None,
-        nargs: int = 1,
-        const: Optional[bool] = None,
-        obj: Optional[click.Option] = None,
-    ) -> None:
-        super().add_option(opts, dest, action, nargs, const, obj)
-
-        # Move every short opt in to the long opts
-        self._long_opt.update(self._short_opt)
-        self._short_opt = {}
-
-    def _process_opts(self, arg: str, state: click.parser.ParsingState) -> None:
-        explicit_value = None
-        if "=" in arg:
-            long_opt, explicit_value = arg.split("=", 1)
-        else:
-            long_opt = arg
-        assert self.ctx is not None
-        norm_long_opt = click.parser.normalize_opt(long_opt, self.ctx)
-
-        self._match_long_opt(norm_long_opt, explicit_value, state)  # type: ignore
-
-
-@click.group()
-@click.help_option("-h", "--help")
-@click.option("-v", "--verbose", count=True)
-@click.option(
-    "--version",
-    help="Show the transient version",
-    expose_value=False,
-    callback=_get_version,
-    is_flag=True,
-    is_eager=True,
+from typing import (
+    List,
+    Any,
+    Optional,
+    Union,
+    Callable,
+    Iterable,
+    cast,
+    TypeVar,
+    Dict,
+    Generic,
+    Type,
+    TextIO,
+    Tuple,
 )
-def cli_entry(verbose: int) -> None:
+
+_TERMINATE_CHECK_TIMEOUT = 2.5
+_COMMIT_CHECK_TIMEOUT = 2.5
+
+
+def set_log_level(verbose: int) -> None:
     log_level = logging.ERROR
     if verbose == 1:
         log_level = logging.WARNING
@@ -135,339 +53,247 @@ def cli_entry(verbose: int) -> None:
     )
 
 
-@click.help_option("-h", "--help")
-@with_options(_common_options)
-@click.option(
-    "-copy-in-before",
-    "-b",
-    multiple=True,
-    type=str,
-    help="Copy a file or directory into the VM before running "
-    + "(path/on/host:/absolute/path/on/guest)",
-)
-@click.option(
-    "-copy-out-after",
-    "-a",
-    multiple=True,
-    type=str,
-    help="Copy a file or directory out of the VM after running "
-    + "(/absolute/path/on/VM:path/on/host)",
-)
-@click.option(
-    "-rsync", is_flag=True, help="Use rsync for copy-in-before/copy-out-after operations"
-)
-@click.option("-name", type=str, help="Create a vm with the given name")
-@click.option(
-    "-ssh-console",
-    "-ssh",
-    is_flag=True,
-    help="Use an ssh connection instead of the serial console",
-)
-@click.option(
-    "-ssh-with-serial",
-    "-sshs",
-    is_flag=True,
-    help="Show the serial output before SSH connects (implies -ssh)",
-)
-@with_options(_ssh_options)
-@click.option(
-    "-ssh-port", type=int, help="Host port the guest port 22 is connected to",
-)
-@click.option(
-    "-ssh-net-driver",
-    type=str,
-    help="The QEMU virtual network device driver e.g. e1000, rtl8139, virtio-net-pci (default)",
-)
-@click.option(
-    "-no-virtio-scsi",
-    is_flag=True,
-    help="Use the QEMU default drive interface (ide) instead of virtio-pci-scsi",
-)
-@click.option(
-    "-shutdown-timeout",
-    type=int,
-    help="The time to wait for shutdown before terminating QEMU",
-)
-@click.option(
-    "-qemu-bin-name", type=str, default="qemu-system-x86_64", help="QEMU binary to use"
-)
-@click.option(
-    "-qmp-timeout",
-    type=int,
-    help="The time in seconds to wait for the QEMU QMP connection to be established",
-)
-@click.option(
-    "-copy-timeout",
-    type=int,
-    help="The maximum time to wait for a copy-in-before or copy-out-after operation to complete",
-)
-@click.option("-sftp-bin-name", type=str, help="SFTP server binary to use")
-@click.option(
-    "-shared-folder",
-    "-s",
-    multiple=True,
-    type=str,
-    help="Share a host directory with the guest (/path/on/host:/path/on/guest)",
-)
-@click.option(
-    "-prepare-only",
-    is_flag=True,
-    help="Only download/create vm disks. Do not start the vm",
-)
-@click.option("-config", "-c", nargs=1, help="Use a configuration file")
-@click.argument("QEMU_ARGS", nargs=-1)
-@cli_entry.command(name="run", cls=TransientRunCommand)
-def run_impl(**kwargs: Any) -> None:
-    """Run a transient virtual machine.
+def create_impl(args: argparse.Namespace) -> None:
+    """Create (but do not run) a transient virtual machine"""
 
-    QEMU_ARGS will be passed directly to QEMU.
-    """
-    try:
-        config = configuration.create_transient_run_config(kwargs)
-    except (
-        configuration.ConfigFileOptionError,
-        configuration.ConfigFileParsingError,
-        configuration.CLIArgumentError,
-        FileNotFoundError,
-    ) as e:
-        print(e, file=sys.stderr)
-        sys.exit(1)
+    config = configuration.create_transient_create_config(vars(args))
+    backend = store.BackendImageStore(path=config.image_backend)
+    vmstore = store.VmStore(backend=backend, path=config.image_frontend)
+    name = vmstore.create_vmstate(config)
+    print(f"Created VM '{name}'")
 
-    store = image.ImageStore(
-        backend_dir=config.image_backend, frontend_dir=config.image_frontend
-    )
-    trans = transient.TransientVm(config=config, store=store)
+
+def start_impl(args: argparse.Namespace) -> None:
+    """Start an existing virtual machine"""
+    config = configuration.create_transient_start_config(vars(args))
+    backend = store.BackendImageStore(path=config.image_backend)
+    vmstore = store.VmStore(backend=backend, path=config.image_frontend)
 
     try:
-        trans.run()
-        sys.exit(0)
-    except utils.TransientError as e:
-        print(e, file=sys.stderr)
-        e.exit()
+        with vmstore.lock_vmstate_by_name(config.name) as state:
+            run_config = configuration.run_config_from_create_and_start(
+                state.config, config
+            )
+    except store.TransientVmStoreLockHeld:
+        raise utils.TransientError(msg=f"A VM named '{config.name}' is already running")
+
+    trans = transient.TransientVm(config=run_config, vmstore=vmstore)
+    trans.run()
 
 
-@click.help_option("-h", "--help")
-@with_options(_common_options)
-@click.option("-force", "-f", help="Do not prompt before deletion", is_flag=True)
-@click.option(
-    "-name", type=str, help="Delete images associated with the given vm name",
-)
-@cli_entry.command("delete")
-def delete_impl(**kwargs: Any) -> None:
-    """Delete transient disks"""
-    try:
-        config = configuration.create_transient_delete_config(kwargs)
-    except configuration.CLIArgumentError as e:
-        print(e, file=sys.stderr)
-        sys.exit(1)
+def run_impl(args: argparse.Namespace) -> None:
+    """Run a transient virtual machine."""
+    config = configuration.create_transient_run_config(vars(args))
 
-    store = image.ImageStore(
-        backend_dir=config.image_backend, frontend_dir=config.image_frontend
-    )
-    images = _find_requested_images(store, config)
+    backend = store.BackendImageStore(path=config.image_backend)
+    vmstore = store.VmStore(backend=backend, path=config.image_frontend)
 
-    if len(images) == 0:
-        print("No images match selection", file=sys.stderr)
-        sys.exit(1)
+    trans = transient.TransientVm(config=config, vmstore=vmstore)
+    trans.run()
 
-    print("The following images will be deleted:\n")
-    frontend, backend = image.format_image_table(images)
-    if len(frontend) > 0:
-        print("Frontend Images:")
-        print(frontend)
-    if len(backend) > 0:
-        print("\nBackend Images:")
-        print(backend)
 
-    if config.force is False:
-        response = utils.prompt_yes_no("Proceed?", default=False)
+_RM_CHECK_TIMEOUT = 1.0
+
+
+def rm_impl(args: argparse.Namespace) -> None:
+    backend = store.BackendImageStore(path=args.image_backend)
+    vmstore = store.VmStore(backend=backend, path=args.image_frontend)
+
+    for name in args.name:
+        if args.force is True:
+            # Attempt to kill any running VM, just log errors
+            try:
+                __terminate_vm(name, vmstore, kill=False, verify=True)
+            except Exception as e:
+                logging.info(f"An error occured while stopping a VM before removal: {e}")
+
+            # If this is a force removal, don't attempt to acquire any locks
+            # or load the state.
+            vmstore.unsafe_rm_vmstate_by_name(name)
+        else:
+            try:
+                vmstore.rm_vmstate_by_name(name, lock_timeout=_RM_CHECK_TIMEOUT)
+            except store.TransientVmStoreLockHeld:
+                raise utils.TransientError(msg=f"VM '{name}' is running")
+
+
+def __terminate_vm(name: str, vmstore: store.VmStore, kill: bool, verify: bool) -> None:
+    instances = scan.find_transient_instances(name=name, vmstore=vmstore.path)
+    if len(instances) > 1:
+        raise utils.TransientError(
+            msg=f"Multiple running VMs with the name '{name}' in the store at {vmstore}"
+        )
+    elif len(instances) == 0:
+        raise utils.TransientError(msg=f"No running VM found with the name '{name}'")
+
+    vm = instances[0]
+    if kill is True:
+        sig = signal.SIGKILL
     else:
-        response = True
+        sig = signal.SIGTERM
+    logging.info(f"Sending signal {sig} to PID {vm.pid}")
+    os.kill(vm.pid, signal.SIGTERM)
 
-    if response is False:
-        sys.exit(0)
+    if verify is False or vm.stateless is True:
+        return
 
-    for image_info in images:
-        logging.info(f"Deleting image at {image_info.path}")
-        store.delete_image(image_info)
-    sys.exit(0)
-
-
-@click.help_option("-h", "--help")
-@click.option(
-    "-name", type=str, help="Connect to a vm with the given name", required=True
-)
-@click.option(
-    "-wait",
-    "-w",
-    is_flag=True,
-    help="Wait for at most 'ssh-timeout' for a vm with the given name to exist",
-)
-@with_options(_ssh_options)
-@cli_entry.command(name="ssh")
-def ssh_impl(**kwargs: Any) -> None:
-    """Connect to a running VM using SSH"""
+    # Termination is totally finished once we can lock the vm state
     try:
-        config = configuration.create_transient_ssh_config(kwargs)
-    except configuration.CLIArgumentError as e:
-        print(e, file=sys.stderr)
-        sys.exit(1)
+        with vmstore.lock_vmstate_by_name(name, timeout=_TERMINATE_CHECK_TIMEOUT):
+            return
+    except store.TransientVmStoreLockHeld:
+        raise utils.TransientError(f"Failed to terminate VM '{name}")
 
-    if config.wait:
-        timeout = config.ssh_timeout
+
+def stop_impl(args: argparse.Namespace) -> None:
+    backend = store.BackendImageStore(path=args.image_backend)
+    vmstore = store.VmStore(backend=backend, path=args.image_frontend)
+
+    for name in args.name:
+        __terminate_vm(name, vmstore, args.kill is True, verify=False)
+
+
+def ssh_impl(args: argparse.Namespace) -> None:
+    """Connect to a running VM using SSH"""
+
+    if args.wait:
+        timeout = args.ssh_timeout
     else:
         timeout = None
 
-    instances = scan.find_transient_instances(name=config.name, timeout=timeout)
+    instances = scan.find_transient_instances(
+        name=args.name, timeout=timeout, vmstore=args.image_frontend
+    )
     if len(instances) > 1:
-        # There shouldn't be instances with the same name, so just take the first and log
-        logging.warning(
-            f"Multiple Transient VMs with name '{config.name}' detected. Using the first found"
+        raise utils.TransientError(
+            msg=f"Multiple running VMs with the name '{args.name}' in the store at {args.vmstore}"
         )
-        instance = instances[0]
-    elif len(instances) == 1:
-        instance = instances[0]
+    elif len(instances) == 0:
+        raise utils.TransientError(msg=f"No running VM found with the name '{args.name}'")
     else:
-        print(f"No running VMs found with the name '{config.name}'", file=sys.stderr)
-        sys.exit(1)
+        instance = instances[0]
 
     if instance.ssh_port is None:
-        print(
-            f"Running VM '{config.name}' has no known SSH port. Was it started with '-ssh'?",
-            file=sys.stderr,
+        raise utils.TransientError(
+            msg=f"Running VM '{args.name}' has no known SSH port. Was it started with '--ssh'?",
         )
-        sys.exit(1)
 
     ssh_config = ssh.SshConfig(
         host="127.0.0.1",
-        user=config.ssh_user,
-        ssh_bin_name=config.ssh_bin_name,
+        user=args.ssh_user,
+        ssh_bin_name=args.ssh_bin_name,
         port=instance.ssh_port,
-        extra_options=config.ssh_option,
+        extra_options=args.ssh_option,
     )
-    client = ssh.SshClient(config=ssh_config, command=config.ssh_command)
-    connection = client.connect_stdout(config.ssh_timeout)
+    client = ssh.SshClient(config=ssh_config, command=args.ssh_command)
+    connection = client.connect_stdout(args.ssh_timeout)
     sys.exit(connection.wait())
 
 
-@cli_entry.group("list")
-@click.pass_context
-def list_command(ctx: Any) -> None:
-    """List information about images or virtual machines"""
-    pass
+def ps_impl(args: argparse.Namespace) -> None:
+    backend = store.BackendImageStore(path=args.image_backend)
+    vmstore = store.VmStore(backend=backend, path=args.image_frontend)
+
+    # Arbitrary max width to avoid line breaks
+    table = beautifultable.BeautifulTable(max_width=1000)
+    headers = ["NAME", "IMAGE", "STATUS"]
+
+    if args.pid is True:
+        headers.append("PID")
+    if args.ssh is True:
+        headers.append("SSH")
+
+    table.column_headers = headers
+
+    if args.pid is True:
+        table.column_alignments["PID"] = beautifultable.BeautifulTable.ALIGN_RIGHT
+    if args.ssh is True:
+        table.column_alignments["SSH"] = beautifultable.BeautifulTable.ALIGN_RIGHT
+
+    table.set_style(beautifultable.BeautifulTable.STYLE_NONE)
+    table.column_alignments["NAME"] = beautifultable.BeautifulTable.ALIGN_LEFT
+    table.column_alignments["IMAGE"] = beautifultable.BeautifulTable.ALIGN_LEFT
+    table.column_alignments["STATUS"] = beautifultable.BeautifulTable.ALIGN_LEFT
+
+    running_instances = scan.find_transient_instances(vmstore=args.image_frontend)
+    for instance in running_instances:
+        row = [
+            instance.name,
+            instance.primary_image,
+            "Started {}".format(instance.start_time.strftime("%Y-%m-%d %H:%M:%S")),
+        ]
+
+        if args.pid is True:
+            row.append(str(instance.pid))
+        if args.ssh is True:
+            row.append(str(instance.ssh_port is not None))
+        table.append_row(row)
+
+    if args.all is True:
+        offline_instances = list(vmstore.vmstates())
+
+        for vm in vmstore.vmstates():
+            # All VMs returned from vmstates must be offline because we wouldn't be
+            # able to lock/read the vmstate otherwise
+            row = [vm.name, vm.config.primary_image, "Offline"]
+            if args.pid is True:
+                row.append("")
+            if args.ssh is True:
+                row.append(str(configuration.config_requires_ssh(vm.config)))
+            table.append_row(row)
+
+    print(table)
 
 
-@click.help_option("-h", "--help")
-@click.option("-name", type=str, help="List virtual machines with the given name")
-@click.option("-with-ssh", is_flag=True, help="List virtual machines with ssh available")
-@list_command.command("vm")
-def list_vm_impl(**kwargs: Any) -> None:
-    """List running VM information"""
+def commit_impl(args: argparse.Namespace) -> None:
+    imgstore = store.BackendImageStore(path=args.image_backend)
+    vmstore = store.VmStore(backend=imgstore, path=args.image_frontend)
+
     try:
-        config = configuration.create_transient_list_vm_config(kwargs)
-    except configuration.CLIArgumentError as e:
-        print(e, file=sys.stderr)
-        sys.exit(1)
-
-    instances = scan.find_transient_instances(
-        name=config.name, with_ssh=config.with_ssh, timeout=None
-    )
-    if len(instances) == 0:
-        print("No running VMs found matching criteria", file=sys.stderr)
-        sys.exit(1)
-
-    print(scan.format_instance_table(instances))
-    sys.exit(0)
+        with vmstore.lock_vmstate_by_name(
+            args.vm, timeout=_COMMIT_CHECK_TIMEOUT
+        ) as state:
+            imgstore.commit_vmstate(state, args.name)
+    except store.TransientVmStoreLockHeld:
+        raise utils.TransientError(msg=f"Vm with name '{args.vm}' is running")
 
 
-@click.help_option("-h", "--help")
-@with_options(_common_options)
-@click.option(
-    "-name", type=str, help="List disks associated with the given vm name",
-)
-@list_command.command("image")
-def list_image_impl(**kwargs: Any) -> None:
+def image_ls_impl(args: argparse.Namespace) -> None:
+    imgstore = store.BackendImageStore(path=args.image_backend)
+
+    table = beautifultable.BeautifulTable(max_width=1000)
+    table.column_headers = ["NAME", "VIRT SIZE", "REAL SIZE"]
+
+    table.set_style(beautifultable.BeautifulTable.STYLE_NONE)
+    table.column_alignments["NAME"] = beautifultable.BeautifulTable.ALIGN_LEFT
+    table.column_alignments["VIRT SIZE"] = beautifultable.BeautifulTable.ALIGN_RIGHT
+    table.column_alignments["REAL SIZE"] = beautifultable.BeautifulTable.ALIGN_RIGHT
+
+    for image in imgstore.backend_image_list():
+        table.append_row(
+            [
+                image.identifier,
+                utils.format_bytes(image.virtual_size),
+                utils.format_bytes(image.actual_size),
+            ]
+        )
+    print(table)
+
+
+def image_build_impl(args: argparse.Namespace) -> None:
     """List transient disk information"""
-    try:
-        config = configuration.create_transient_list_image_config(kwargs)
-    except configuration.CLIArgumentError as e:
-        print(e, file=sys.stderr)
-        sys.exit(1)
-
-    store = image.ImageStore(
-        backend_dir=config.image_backend, frontend_dir=config.image_frontend
-    )
-    images = _find_requested_images(store, config)
-
-    if len(images) == 0:
-        print("No images match selection", file=sys.stderr)
-        sys.exit(1)
-
-    frontend, backend = image.format_image_table(images)
-    if len(frontend) > 0:
-        print("Frontend Images:")
-        print(frontend)
-    if len(backend) > 0:
-        print("\nBackend Images:")
-        print(backend)
-    sys.exit(0)
-
-
-@click.help_option("-h", "--help")
-@click.option("-file", "-f", type=str, help="Specify a path to the Imagefile")
-@click.option(
-    "-image-backend",
-    type=str,
-    help="The location to place the shared, read-only backing disk images",
-)
-@click.option(
-    "-ssh-timeout", type=int, help="Time to wait for SSH connection before failing"
-)
-@click.option(
-    "-qmp-timeout",
-    type=int,
-    help="The time in seconds to wait for the QEMU QMP connection to be established",
-)
-@click.option(
-    "-local", is_flag=True, help="Produce image in the build-dir instead of the backend",
-)
-@click.option("-name", help="The name given to the new image", required=True)
-@click.argument("build-dir")
-@cli_entry.command("build")
-def build_impl(**kwargs: Any) -> None:
-    """List transient disk information"""
-    try:
-        config = configuration.create_transient_build_config(kwargs)
-    except configuration.CLIArgumentError as e:
-        print(e, file=sys.stderr)
-        sys.exit(1)
-    store = image.ImageStore(backend_dir=config.image_backend, frontend_dir=None)
-    builder = build.ImageBuilder(config, store)
+    config = configuration.create_transient_build_config(vars(args))
+    imgstore = store.BackendImageStore(path=config.image_backend)
+    builder = build.ImageBuilder(config, imgstore)
     builder.build()
-    sys.exit(0)
 
 
-def _find_requested_images(
-    store: image.ImageStore, config: configuration.Config
-) -> List[image.BaseImageInfo]:
-    images: List[image.BaseImageInfo] = []
-    if config.name is not None:
-        if len(config.image) == 0:
-            images = list(store.frontend_image_list(config.name))
-        else:
-            for image_identifier in config.image:
-                images.extend(store.frontend_image_list(config.name, image_identifier))
-    else:
-        if len(config.image) == 0:
-            images = list(store.backend_image_list())
-            images.extend(store.frontend_image_list())
-        else:
-            for image_identifier in config.image:
-                images.extend(store.backend_image_list(image_identifier))
-                images.extend(
-                    store.frontend_image_list(image_identifier=image_identifier)
-                )
-    return images
+def image_rm_impl(args: argparse.Namespace) -> None:
+    imgstore = store.BackendImageStore(path=args.image_backend)
+    # TODO: support -force
+    for name in args.name:
+        for item in imgstore.backend_image_list(image_identifier=name):
+            imgstore.delete_image(item)
 
 
 def sigint_handler(sig: int, frame: Any) -> None:
@@ -475,11 +301,77 @@ def sigint_handler(sig: int, frame: Any) -> None:
     sys.exit(1)
 
 
+def __dispatch_command(
+    parsed_arguments: argparse.Namespace, qemu_args: List[str]
+) -> None:
+    command_mappings = {
+        "create": (create_impl, True),
+        "run": (run_impl, True),
+        "rm": (rm_impl, False),
+        "ssh": (ssh_impl, False),
+        "start": (start_impl, True),
+        "stop": (stop_impl, False),
+        "ps": (ps_impl, False),
+        "commit": (commit_impl, False),
+        "image": {
+            "ls": (image_ls_impl, False),
+            "build": (image_build_impl, False),
+            "rm": (image_rm_impl, False),
+        },
+    }
+
+    # Starting with a field named 'root_command', recursively look through the
+    # command_mappings object to find the appropriate callback. This is required
+    # because some subcommands have the same name as sub-subcommands (e.g., 'rm'
+    # and 'image rm'.)
+    mapping: Any = command_mappings
+    field = "root_command"
+    while True:
+        name = getattr(parsed_arguments, field)
+        value = mapping[name]
+        delattr(parsed_arguments, field)
+
+        if isinstance(value, tuple):
+            callback, needs_qemu = value
+            break
+        else:
+            mapping = value
+            field = name + "_command"
+
+    if needs_qemu is True:
+        # The 'hidden' field should never contain actual values, replace them
+        # with what we parsed ourselves
+        setattr(parsed_arguments, "qemu_args", qemu_args)
+
+    callback(parsed_arguments)
+
+
 def main() -> None:
     signal.signal(signal.SIGINT, sigint_handler)
 
-    # Click aggressively insists on having locales prior to python 3.7.
-    # This won't be the case inside docker, for example, so skip the
-    # check.
-    click.core._verify_python3_env = lambda: None  # type: ignore
-    cli_entry()
+    # Manually split on the '--' to avoid any parsing ambiguity
+    if sys.argv.count("--") == 0:
+        transient_args = sys.argv[1:]
+        qemu_args = []
+    else:
+        arg_split_idx = sys.argv.index("--")
+        transient_args = sys.argv[1:arg_split_idx]
+        qemu_args = sys.argv[arg_split_idx + 1 :]
+
+    # Now parse the provided args and call the appropriate callback
+    parsed = args.ROOT_PARSER.parse_args(transient_args)
+
+    set_log_level(parsed.verbose)
+
+    try:
+        __dispatch_command(parsed, qemu_args)
+    except (
+        configuration.ConfigFileOptionError,
+        configuration.ConfigFileParsingError,
+        configuration.CLIArgumentError,
+        FileNotFoundError,
+        utils.TransientError,
+    ) as e:
+        print(e, file=sys.stderr)
+        sys.exit(1)
+    sys.exit(0)

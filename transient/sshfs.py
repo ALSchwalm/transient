@@ -87,7 +87,7 @@ class SshfsThread(threading.Thread):
         client = ssh.SshClient(sshfs_config, command=ssh_command)
 
         sftp_proc = subprocess.Popen(
-            [get_sftp_server(name=sshfs_config.sftp_server_bin_name), "-e"],
+            [get_sftp_server(name=sshfs_config.sftp_bin_name), "-e"],
             stdin=subprocess.PIPE,
             stdout=subprocess.PIPE,
             preexec_fn=lambda: linux.set_death_signal(signal.SIGTERM),

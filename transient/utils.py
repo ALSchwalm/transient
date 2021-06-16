@@ -1,5 +1,6 @@
 import bz2
 import distutils.util
+import fcntl
 import logging
 import lzma
 import io
@@ -8,6 +9,7 @@ import pathlib
 import progressbar  # type: ignore
 import select
 import socket
+import stat
 import subprocess
 import time
 import tempfile
@@ -84,6 +86,22 @@ def transient_data_home() -> str:
     return os.path.join(xdg_data_home(), "transient")
 
 
+def default_backend_dir() -> str:
+    env_specified = os.getenv("TRANSIENT_BACKEND")
+    if env_specified is not None:
+        return env_specified
+    home = transient_data_home()
+    return os.path.join(home, "backend")
+
+
+def default_vmstore_dir() -> str:
+    env_specified = os.getenv("TRANSIENT_VMSTORE")
+    if env_specified is not None:
+        return env_specified
+    home = transient_data_home()
+    return os.path.join(home, "vmstore")
+
+
 def package_file_path(key: str) -> ContextManager[pathlib.Path]:
     return pkg_resources.path(static, key)
 
@@ -130,6 +148,39 @@ def prepare_file_operation_bar(filesize: int) -> progressbar.ProgressBar:
     )
 
 
+def lock_path(
+    dest: str, timeout: Optional[float] = None, check_interval: float = 0.1
+) -> int:
+    # By default, python 'open' call will truncate writable files. We can't allow that
+    # as we don't yet hold the flock (and there is no way to open _and_ flock in one
+    # call). So we use os.open to avoid the truncate.
+    fd = os.open(dest, os.O_RDWR | os.O_CREAT)
+
+    logging.debug(f"Attempting to acquire lock of '{dest}'")
+
+    if timeout is not None:
+        lock_flags = fcntl.LOCK_EX | fcntl.LOCK_NB
+    else:
+        lock_flags = fcntl.LOCK_EX
+
+    start = time.time()
+    while True:
+        try:
+            fcntl.flock(fd, lock_flags)
+            break
+        except OSError:
+            logging.info(f"Unable to acquire lock of '{dest}'. Waiting {check_interval}")
+            assert timeout is not None
+            if time.time() - start < timeout:
+                time.sleep(check_interval)
+                continue
+            raise
+
+    logging.debug(f"Lock of '{dest}' acquired")
+
+    return fd
+
+
 def read_until(
     source: io.BufferedReader, sentinel: bytes, timeout: Optional[float] = None
 ) -> bytes:
@@ -173,6 +224,10 @@ def read_until(
             time_remaining = start_time + timeout - time.time()
             if time_remaining < 0:
                 raise TimeoutError(buff)
+
+
+def make_path_readonly(path: str) -> None:
+    os.chmod(path, stat.S_IREAD | stat.S_IRGRP | stat.S_IROTH)
 
 
 def copy_with_progress(

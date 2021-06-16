@@ -1,5 +1,4 @@
 import base64
-import beautifultable  # type: ignore
 import datetime
 import json
 import logging
@@ -23,6 +22,8 @@ SCAN_ENVIRON_SENTINEL = "__TRANSIENT_PROCESS"
 class TransientInstance:
     pid: int
     start_time: datetime.datetime
+    primary_image: str
+    stateless: bool
     name: Optional[str]
     ssh_port: Optional[int]
 
@@ -57,15 +58,19 @@ def _read_pid_data(pid_dir: str, data_fd: int) -> Any:
 
 
 def find_transient_instances(
-    name: Optional[str] = None, with_ssh: bool = False, timeout: Optional[int] = None
+    name: Optional[str] = None,
+    with_ssh: bool = False,
+    timeout: Optional[int] = None,
+    vmstore: Optional[str] = None,
 ) -> List[TransientInstance]:
     """Find running transient instances matching the given parameters
 
-       If 'name' is specified, only instances started with a equivalent '-name'
+       If 'name' is specified, only instances started with a equivalent 'name'
        argument will be returned. 'with_ssh' will filter for instances that
-       were started with '-ssh' (or other options that imply '-ssh'). If the
+       were started with '--ssh' (or other options that imply '--ssh'). If the
        'timeout' option is passed, this function will block until at least one
        instance matching the provided parameters is found, or a timeout occurs.
+       If 'vmstore' is passed, only VMs backed by the given store are considered.
        Note that 'timeout' may not be passed by itself.
     """
     if name is None and with_ssh is False and timeout is not None:
@@ -99,6 +104,10 @@ def find_transient_instances(
                 # with the actual data. Ignore the entry in this case.
                 continue
 
+            if vmstore is not None and (
+                "vmstore" not in data or data["vmstore"] != vmstore
+            ):
+                continue
             if name is not None and ("name" not in data or data["name"] != name):
                 continue
             if with_ssh is True and "ssh_port" not in data:
@@ -111,22 +120,3 @@ def find_transient_instances(
             logging.info(f"Unable to locate VM. Waiting {delay_between}s before retrying")
             time.sleep(delay_between)
     return instances
-
-
-def format_instance_table(
-    instances: List[TransientInstance],
-) -> beautifultable.BeautifulTable:
-    table = beautifultable.BeautifulTable()
-    table.column_headers = ["VM Name", "Start Time", "PID", "SSH Port"]
-    table.set_style(beautifultable.BeautifulTable.STYLE_BOX)
-    table.column_alignments["VM Name"] = beautifultable.BeautifulTable.ALIGN_LEFT
-    table.column_alignments["Start Time"] = beautifultable.BeautifulTable.ALIGN_LEFT
-    table.column_alignments["PID"] = beautifultable.BeautifulTable.ALIGN_RIGHT
-    table.column_alignments["SSH Port"] = beautifultable.BeautifulTable.ALIGN_RIGHT
-    for instance in instances:
-        if instance.ssh_port is None:
-            port = "N/A"
-        else:
-            port = str(instance.ssh_port)
-        table.append_row([instance.name, instance.start_time, instance.pid, port])
-    return table

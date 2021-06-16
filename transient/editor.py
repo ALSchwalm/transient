@@ -97,16 +97,17 @@ class GuestCommand(Command):
             return stdout, stderr
 
 
+EditorConfig = Union[configuration.RunConfig, configuration.BuildConfig]
+
+
 class ImageEditor:
-    config: configuration.Config
+    config: EditorConfig
     ssh_config: ssh.SshConfig
     path: str
     skip_mount: bool
     runner: qemu.QemuRunner
 
-    def __init__(
-        self, config: configuration.Config, path: str, skip_mount: bool = False
-    ) -> None:
+    def __init__(self, config: EditorConfig, path: str, skip_mount: bool = False) -> None:
         self.config = config
         self.path = path
         self.skip_mount = skip_mount
