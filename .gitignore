@@ -1,7 +1,6 @@
 .mypy_cache/
 venv/
-transient/__pycache__/
-transient/static/__pycache__/
+__pycache__
 transient.egg-info/
 build/
 dist/
@@ -12,3 +11,4 @@ tags
 
 # artifacts produced from testing
 artifacts
+.coverage
