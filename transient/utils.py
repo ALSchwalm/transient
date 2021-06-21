@@ -1,6 +1,5 @@
 import distutils.util
 import logging
-import itertools
 import io
 import os
 import pathlib
@@ -184,12 +183,14 @@ def copy_with_progress(
     else:
         prog_bar = bar
 
-    for idx in itertools.count():
+    bytes_copied = 0
+    while True:
         block = source.read(block_size)
         if not block:
             break
         destination.write(block)
-        prog_bar.update(idx * block_size)
+        bytes_copied += len(block)
+        prog_bar.update(bytes_copied)
     prog_bar.finish()
 
 
