@@ -43,7 +43,9 @@ setup(
             "typing==3.7.4.1",
             "behave==1.2.6",
             "twine==3.1.1",
-            "wheel==0.36.2"
+            "wheel==0.36.2",
+            "pytest==6.2",
+            "pytest-cov==2.12",
         ],
     },
     entry_points={

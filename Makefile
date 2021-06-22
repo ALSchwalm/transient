@@ -51,6 +51,15 @@ test:
 test-%:
 	make -C test $*
 
+.PHONY: unittest
+unittest:
+	pytest -v
+
+# For running locally. A detailed coverage report
+.PHONY: unittest-coverage
+unittest-coverage:
+	pytest -v --cov=transient --cov-report=term --cov-report=html:artifacts/coverage/html
+
 $(TRANSIENT_INITRAMFS) $(TRANSIENT_KERNEL): $(TRANSIENT_KCONFIG) $(TRANSIENT_BUILDROOT_CONFIG)
 	cp $(TRANSIENT_BUILDROOT_CONFIG) kernel/buildroot/.config
 	make -C kernel/buildroot
