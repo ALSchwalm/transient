@@ -233,7 +233,7 @@ class FileImageProtocol(BaseImageProtocol):
         with open(spec.source, "rb") as existing_file:
             size = existing_file.seek(0, os.SEEK_END)
             existing_file.seek(0)
-            utils.copy_with_progress(existing_file, destination, size)
+            utils.copy_with_progress(existing_file, destination, size, decompress=True)
 
         logging.info("File copy complete.")
 
@@ -257,8 +257,9 @@ class HttpImageProtocol(BaseImageProtocol):
             total_length = int(stream.headers["content-length"])
 
         bar = utils.prepare_file_operation_bar(total_length)
+        decompressor = utils.StreamDecompressor()
         for idx, block in enumerate(stream.iter_content(_BLOCK_TRANSFER_SIZE)):
-            destination.write(block)
+            destination.write(decompressor.decompress(block))
             bar.update(idx * _BLOCK_TRANSFER_SIZE)
         bar.finish()
 

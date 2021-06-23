@@ -1,5 +1,7 @@
+import bz2
 import distutils.util
 import logging
+import lzma
 import io
 import os
 import pathlib
@@ -11,6 +13,7 @@ import time
 import tempfile
 import uuid
 import sys
+import zlib
 
 try:
     import importlib.resources as pkg_resources
@@ -18,7 +21,7 @@ except ImportError:
     # Try backported to PY<37 `importlib_resources`.
     import importlib_resources as pkg_resources  # type: ignore
 
-from typing import cast, Optional, ContextManager, List, Union, IO, Any, Tuple
+from typing import cast, Optional, ContextManager, List, Union, IO, Any, Tuple, Callable
 from . import static
 
 # From the typeshed Popen definitions
@@ -177,21 +180,102 @@ def copy_with_progress(
     destination: IO[bytes],
     bar: Union[progressbar.ProgressBar, int],
     block_size: int = 64 * 1024,
+    decompress: bool = False,
 ) -> None:
     if isinstance(bar, int):
         prog_bar = prepare_file_operation_bar(bar)
     else:
         prog_bar = bar
 
+    if decompress is False:
+        # Decompression is a no-op for the plain format
+        decompressor = StreamDecompressor(compression_format="plain")
+    else:
+        # If decompression is requested, determine the format automatically
+        decompressor = StreamDecompressor()
+
     bytes_copied = 0
     while True:
         block = source.read(block_size)
         if not block:
             break
-        destination.write(block)
+        destination.write(decompressor.decompress(block))
         bytes_copied += len(block)
         prog_bar.update(bytes_copied)
     prog_bar.finish()
+
+
+class StreamDecompressor:
+    decompression_method: Optional[Callable[[bytes], bytes]]
+
+    def __init__(self, compression_format: Optional[str] = None) -> None:
+        if compression_format is not None:
+            if compression_format == "plain":
+                self.decompression_method = self._init_plain_decompressor()
+                return
+            for (
+                (name, _),
+                init_decompressor,
+            ) in StreamDecompressor.COMPRESSION_MAGIC.items():
+                if name == compression_format:
+                    self.decompression_method = init_decompressor(self)
+                    return
+            raise RuntimeError(f"Unknown compression format '{compression_format}'")
+        else:
+            self.decompression_method = None
+
+    def decompress(self, contents: bytes) -> bytes:
+        if self.decompression_method is None:
+            for (
+                (fmt, magic),
+                (init_decompressor),
+            ) in StreamDecompressor.COMPRESSION_MAGIC.items():
+                if not contents.startswith(magic):
+                    continue
+                logging.debug(f"Decompressing stream with format '{fmt}'")
+                self.decompression_method = init_decompressor(self)
+                break
+            else:
+                logging.debug("Stream not compressed or unknown type")
+                self.decompression_method = self._init_plain_decompressor()
+
+        return self.decompression_method(contents)
+
+    def _init_gz_decompressor(self) -> Callable[[bytes], bytes]:
+        inner_decompressor = zlib.decompressobj(zlib.MAX_WBITS | 32)
+
+        def decompress_gz(contents: bytes) -> bytes:
+            return inner_decompressor.decompress(contents)
+
+        return decompress_gz
+
+    def _init_bz2_decompressor(self) -> Callable[[bytes], bytes]:
+        inner_decompressor = bz2.BZ2Decompressor()
+
+        def decompress_bz2(contents: bytes) -> bytes:
+            return inner_decompressor.decompress(contents)
+
+        return decompress_bz2
+
+    def _init_xz_decompressor(self) -> Callable[[bytes], bytes]:
+        inner_decompressor = lzma.LZMADecompressor()
+
+        def decompress_xz(contents: bytes) -> bytes:
+            return inner_decompressor.decompress(contents)
+
+        return decompress_xz
+
+    def _init_plain_decompressor(self) -> Callable[[bytes], bytes]:
+        def decompress_plain(contents: bytes) -> bytes:
+            return contents
+
+        return decompress_plain
+
+    COMPRESSION_MAGIC = {
+        ("gzip", b"\x1f\x8b"): _init_gz_decompressor,
+        ("bz2", b"\x42\x5a\x68"): _init_bz2_decompressor,
+        ("xz", b"\xfd\x37\x7a\x58\x5a\x00"): _init_xz_decompressor,
+    }
 
 
 def run_check_retcode(
