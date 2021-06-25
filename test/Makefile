@@ -12,7 +12,7 @@ docker-ci: docker-behave-ci
 
 .PHONY: behave
 behave:
-	behave
+	behave --tags=~@none
 
 docker-behave-ci-%:
 	behave -i $* --tags=~@skip-in-docker-ci --tags=~@skip-in-ci
