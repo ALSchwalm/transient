@@ -10,6 +10,15 @@ Feature: Image Support
      When the transient command is run
      Then the return code is 0
 
+ Scenario: Download an uncompressed image via http
+    Given a transient vm
+      And a disk image "test_http_file,http=https://github.com/ALSchwalm/transient-baseimages/releases/download/4/alpine-3.13.qcow2"
+      And a backend "./artifacts/test-backend"
+    And a ssh command "echo passed"
+     When the vm runs to completion
+     Then the return code is 0
+      And stdout contains "passed"
+
  Scenario: Set a custom frontend
     Given a transient vm
       And a name "test-vm"

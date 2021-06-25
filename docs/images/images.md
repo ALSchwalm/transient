@@ -30,13 +30,15 @@ The `http` protocol will download the backend image from the provided
 URL and store it under a given name. So for example
 `-image myimage,http=https://cloud.centos.org/centos/7/images/CentOS-7-x86_64-GenericCloud-20150628_01.qcow2`
 will download the image from 'cloud.centos.org' and store it in the
-backend as 'myimage'.
+backend as 'myimage'. Files compressed with `gzip`, `bzip2`, or `xz`
+will be transparently decompressed when downloaded.
 
 ### File
 
 The `file` protocol copies an existing file as a new backend image. For
 example, `-image myimage,file=/path/to/image.qcow2` will copy file `image.qcow2`
-to the backend with the name `myimage`.
+to the backend with the name `myimage`. Files compressed with `gzip`, `bzip2`,
+or `xz` will be transparently decompressed as they are copied.
 
 ### Frontend
 

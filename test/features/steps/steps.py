@@ -142,7 +142,7 @@ def step_impl(context):
     context.vm_config["transient-args"].extend(
         [
             "-image",
-            "alpine_rel3,http=https://github.com/ALSchwalm/transient-baseimages/releases/download/3/alpine-3.13.qcow2",
+            "alpine_rel3,http=https://github.com/ALSchwalm/transient-baseimages/releases/download/5/alpine-3.13.qcow2.xz",
         ]
     )
 
@@ -152,7 +152,7 @@ def step_impl(context):
     context.vm_config["transient-args"].extend(
         [
             "-image",
-            "centos7_rel3,http=https://github.com/ALSchwalm/transient-baseimages/releases/download/3/centos-7.8.2003.qcow2",
+            "centos7_rel3,http=https://github.com/ALSchwalm/transient-baseimages/releases/download/5/centos-7.8.2003.qcow2.xz",
         ]
     )
 
