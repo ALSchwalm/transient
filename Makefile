@@ -6,7 +6,7 @@ COMPREHENSIVE_EXAMPLE=docs/configuration-file/comprehensive-example.md
 MAX_LINE_LENGTH?=100
 
 .PHONY: check
-check: check-format check-types
+check: check-format check-types check-deadcode
 
 .PHONY: check-format
 check-format:
@@ -15,6 +15,10 @@ check-format:
 .PHONY: check-types
 check-types:
 	mypy --strict transient scripts
+
+.PHONY: check-deadcode
+check-deadcode:
+	vulture transient --min-confidence 90
 
 .PHONY: format
 format:

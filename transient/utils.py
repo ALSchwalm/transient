@@ -1,4 +1,5 @@
 import bz2
+import contextlib
 import distutils.util
 import fcntl
 import logging
@@ -23,7 +24,18 @@ except ImportError:
     # Try backported to PY<37 `importlib_resources`.
     import importlib_resources as pkg_resources  # type: ignore
 
-from typing import cast, Optional, ContextManager, List, Union, IO, Any, Tuple, Callable
+from typing import (
+    cast,
+    Optional,
+    ContextManager,
+    List,
+    Union,
+    IO,
+    Any,
+    Tuple,
+    Callable,
+    Iterator,
+)
 from . import static
 
 # From the typeshed Popen definitions
@@ -148,15 +160,16 @@ def prepare_file_operation_bar(filesize: int) -> progressbar.ProgressBar:
     )
 
 
-def lock_path(
-    dest: str, timeout: Optional[float] = None, check_interval: float = 0.1
-) -> int:
+@contextlib.contextmanager
+def lock_file(
+    path: str, mode: str, timeout: Optional[float] = None, check_interval: float = 0.1
+) -> Iterator[IO[Any]]:
     # By default, python 'open' call will truncate writable files. We can't allow that
     # as we don't yet hold the flock (and there is no way to open _and_ flock in one
     # call). So we use os.open to avoid the truncate.
-    fd = os.open(dest, os.O_RDWR | os.O_CREAT)
+    fd = os.open(path, os.O_RDWR | os.O_CREAT)
 
-    logging.debug(f"Attempting to acquire lock of '{dest}'")
+    logging.debug(f"Attempting to acquire lock of '{path}'")
 
     if timeout is not None:
         lock_flags = fcntl.LOCK_EX | fcntl.LOCK_NB
@@ -169,16 +182,16 @@ def lock_path(
             fcntl.flock(fd, lock_flags)
             break
         except OSError:
-            logging.info(f"Unable to acquire lock of '{dest}'. Waiting {check_interval}")
+            logging.info(f"Unable to acquire lock of '{path}'. Waiting {check_interval}")
             assert timeout is not None
             if time.time() - start < timeout:
                 time.sleep(check_interval)
                 continue
             raise
 
-    logging.debug(f"Lock of '{dest}' acquired")
+    logging.debug(f"Lock of '{path}' acquired")
 
-    return fd
+    yield os.fdopen(fd, mode)
 
 
 def read_until(

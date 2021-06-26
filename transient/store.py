@@ -3,7 +3,6 @@ import contextlib
 import json
 import logging
 import fcntl
-import itertools
 import os
 import progressbar  # type: ignore
 import re
@@ -20,7 +19,19 @@ import uuid
 
 from . import configuration
 from . import utils
-from typing import cast, Optional, List, Dict, Any, Union, Tuple, IO, Pattern, Iterator
+from typing import (
+    cast,
+    Optional,
+    List,
+    Dict,
+    Any,
+    Union,
+    Tuple,
+    IO,
+    Pattern,
+    Iterator,
+    TextIO,
+)
 
 # Time to wait in seconds between attempts to acquire vmstate lock
 _VMSTATE_LOCK_INTERVAL = 0.1
@@ -57,17 +68,15 @@ class BaseImageProtocol:
         # Do partial downloads into the working directory in the backend
         dest_name = os.path.basename(destination)
         temp_destination = os.path.join(store.working, dest_name)
-        fd = utils.lock_path(temp_destination)
 
-        # We now hold the lock. Either another process started the retrieval
-        # and died (or never started at all) or they completed. If the final file exists,
-        # the must have completed successfully so just return.
-        if os.path.exists(destination):
-            logging.info("Retrieval completed by another processes. Skipping.")
-            os.close(fd)
-            return None
+        with utils.lock_file(temp_destination, "wb+") as temp_file:
+            # We now hold the lock. Either another process started the retrieval
+            # and died (or never started at all) or they completed. If the final file exists,
+            # the must have completed successfully so just return.
+            if os.path.exists(destination):
+                logging.info("Retrieval completed by another processes. Skipping.")
+                return None
 
-        with os.fdopen(fd, "wb+") as temp_file:
             self._do_retrieve_image(store, spec, temp_file)
 
             # Now that the entire file is retrieved, atomically move it to the destination.
@@ -397,17 +406,16 @@ class BackendImageStore:
         destination = os.path.join(self.backend, safe_name)
         working = os.path.join(self.working, safe_name)
 
-        fd = utils.lock_path(working)
-        if os.path.exists(destination):
-            raise utils.TransientError(
-                msg=f"An image with the name '{name}' already exists"
-            )
+        with utils.lock_file(working, "wb") as _:
+            if os.path.exists(destination):
+                raise utils.TransientError(
+                    msg=f"An image with the name '{name}' already exists"
+                )
 
-        with os.fdopen(fd, "wb") as _:
-            print(f"Converting vm image to new backend image {name}")
+            print(f"Converting vm image to new backend image '{name}'")
 
-            # TODO: maybe investigate doing this via rebase? That seems to produce
-            # smaller disk sizes
+            # Use 'convert' to flatten the image, so we don't have
+            # arbitrarily long qcow backing chains
             utils.run_check_retcode(
                 [
                     self.qemu_img_bin,
@@ -567,21 +575,21 @@ class VmStore:
         cfg_path = os.path.join(dir, "config")
 
         try:
-            fd = utils.lock_path(cfg_path, timeout)
+            with utils.lock_file(cfg_path, "r", timeout) as cfg_file:
+                config = configuration.load_config_file(cast(TextIO, cfg_file), cfg_path)
+
+                images = []
+                for filename in os.listdir(dir):
+                    path = os.path.join(dir, filename)
+                    if filename == "config":
+                        continue
+                    else:
+                        images.append(FrontendImageInfo(self.backend, path))
+                yield VmPersistentState(
+                    name=name, config=config, images=images, vmstore=self
+                )
         except OSError:
             raise TransientVmStoreLockHeld()
-
-        with os.fdopen(fd, "r") as cfg_file:
-            config = configuration.load_config_file(cfg_file, cfg_path)
-
-            images = []
-            for filename in os.listdir(dir):
-                path = os.path.join(dir, filename)
-                if filename == "config":
-                    continue
-                else:
-                    images.append(FrontendImageInfo(self.backend, path))
-            yield VmPersistentState(name=name, config=config, images=images, vmstore=self)
 
 
 class TransientVmStoreLockHeld(utils.TransientError):

@@ -11,7 +11,6 @@ from . import static
 import base64
 import contextlib
 import enum
-import glob
 import json
 import logging
 import os
@@ -254,7 +253,7 @@ class TransientVm:
         conn.wait()
         return conn.returncode
 
-    def __qemu_sigchld_handler(self, sig: int, frame: Any) -> None:
+    def __qemu_sigchld_handler(self, sig: int, _frame: Any) -> None:
         # We register this signal handler after the QEMU start, so these must not be None
         assert self.qemu_runner is not None
         assert self.qemu_runner.proc_handle is not None

@@ -134,9 +134,9 @@ class ImageEditor:
 
     def __exit__(
         self,
-        type: Optional[Type[BaseException]],
-        value: Optional[BaseException],
-        traceback: Optional[types.TracebackType],
+        _type: Optional[Type[BaseException]],
+        _value: Optional[BaseException],
+        _traceback: Optional[types.TracebackType],
     ) -> Optional[bool]:
         self.close()
         return None

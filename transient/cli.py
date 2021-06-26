@@ -24,11 +24,9 @@ from typing import (
     Optional,
     Union,
     Callable,
-    Iterable,
     cast,
     TypeVar,
     Dict,
-    Generic,
     Type,
     TextIO,
     Tuple,
@@ -296,7 +294,7 @@ def image_rm_impl(args: argparse.Namespace) -> None:
             imgstore.delete_image(item)
 
 
-def sigint_handler(sig: int, frame: Any) -> None:
+def sigint_handler(sig: int, _frame: Any) -> None:
     logging.warning("transient process received SIGINT")
     sys.exit(1)
 
