@@ -308,7 +308,8 @@ COMMIT_PARSER.add_argument("name", help="Name of the new image", type=str)
 IMAGE_PARSER = _SUBPARSERS.add_parser(
     "image", parents=[], help="Print information about images"
 )
-_IMAGE_SUBPARSERS = IMAGE_PARSER.add_subparsers(dest="image_command", required=True)
+_IMAGE_SUBPARSERS = IMAGE_PARSER.add_subparsers(dest="image_command")
+_IMAGE_SUBPARSERS.required = True
 
 # Define 'image ls' subcommand
 IMAGE_LS_PARSER = _IMAGE_SUBPARSERS.add_parser(
