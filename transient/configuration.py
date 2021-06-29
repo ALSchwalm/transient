@@ -126,7 +126,7 @@ def schema_from_argument_parser(parser: argparse.ArgumentParser) -> Type[Schema]
             {
                 arg.dest: arg_to_field(arg)
                 for arg in parser._actions
-                if arg.dest != "help"
+                if arg.dest not in ("help", "verbose")
             },
         ),
     )

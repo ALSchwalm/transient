@@ -3,7 +3,7 @@ Feature: VM Persistence
   needed, transient can boot using the same disk multiple times.
 
  Scenario: Reboot a VM keeping changes
-    Given a transient vm
+    Given a transient run command
       And a name "test-vm"
       And a frontend "./artifacts/test-frontend"
       And a disk image "generic/alpine38:v3.0.2"

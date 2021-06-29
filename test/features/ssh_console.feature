@@ -4,7 +4,7 @@ Feature: SSH Console
   'fully' booted), transient supports using SSH as the VM connection
 
   Scenario: Run VM with a single SSH command
-    Given a transient vm
+    Given a transient run command
       And an http alpine disk image
       And a ssh command "echo 'ssh-command working'"
      When the vm runs to completion
@@ -12,7 +12,7 @@ Feature: SSH Console
       And stdout contains "ssh-command working"
 
   Scenario: Run VM with a SSH console
-    Given a transient vm
+    Given a transient run command
       And an http alpine disk image
       And a ssh console
      When the vm runs
@@ -26,7 +26,7 @@ Feature: SSH Console
       And stdout contains "ssh-console working"
 
   Scenario: Run VM with SSH and serial console
-    Given a transient vm
+    Given a transient run command
       And an http alpine disk image
       And a ssh-with-serial console
      When the vm runs

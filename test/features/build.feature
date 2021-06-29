@@ -18,7 +18,7 @@ Scenario: Build alpine in build directory
       And an imagefile "resources/imagefiles/Imagefile.simple"
       And a build directory "artifacts/build-dir"
       And a name "test-build-alpine"
-      And a transient flag "-local"
+      And a transient flag "--local"
      When the transient command is run
      Then the return code is 0
       And the file "artifacts/build-dir/test-build-alpine.qcow2" exists
@@ -35,7 +35,7 @@ Scenario: Build alpine in backend
       And the file "artifacts/test-backend/test%2Dbuild%2Dalpine%2Dbackend" exists
 
 Scenario: The built image is usable
-    Given a transient vm
+    Given a transient run command
       And a disk image "test-build-alpine-backend"
       And a backend "./artifacts/test-backend"
       And a ssh command "echo 'ssh-command working'"

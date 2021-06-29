@@ -10,11 +10,11 @@ check: check-format check-types check-deadcode
 
 .PHONY: check-format
 check-format:
-	black -l 90 --check transient test scripts
+	black -l 90 --check transient test
 
 .PHONY: check-types
 check-types:
-	mypy --strict transient scripts
+	mypy --strict transient
 
 .PHONY: check-deadcode
 check-deadcode:
@@ -22,7 +22,7 @@ check-deadcode:
 
 .PHONY: format
 format:
-	black -l 90 transient test scripts
+	black -l 90 transient test
 
 .PHONY: dev
 dev: venv/.dev-finished
@@ -76,19 +76,12 @@ kernel: $(TRANSIENT_KERNEL)
 .PHONY: initramfs
 initramfs: $(TRANSIENT_INITRAMFS)
 
-.PHONY: $(COMPREHENSIVE_EXAMPLE)
-$(COMPREHENSIVE_EXAMPLE):
-	scripts/embed_file_into_markdown_template.py \
-		--file-to-embed test/config-files/comprehensive-config \
-		--markdown-template docs/templates/comprehensive-example-template.md \
-		--output-file $@
-
 .PHONY: docs
-docs: $(COMPREHENSIVE_EXAMPLE)
+docs:
 	mkdocs serve
 
 .PHONY: clean
 clean:
-	rm -rf sdist dist $(COMPREHENSIVE_EXAMPLE)
+	rm -rf sdist dist
 	make -C test clean
 	make -C kernel/buildroot clean

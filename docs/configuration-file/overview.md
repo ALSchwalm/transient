@@ -42,6 +42,3 @@ A `transient` configuration can be supplied to the `run` command using the
 ```
 $ transient run -config transient-config.toml
 ```
-
-For a more complete example of a `transient` configuration file, see the
-[Comprehensive Example page](./comprehensive-example.md).

@@ -16,8 +16,15 @@ def define_common_parser(include_defaults: bool) -> Tuple[argparse.ArgumentParse
 
     # Common arguments used for all subcommands
     common_parser = argparse.ArgumentParser(add_help=False)
+
+    # Use 'SUPPRESS' here so subcommand parser values won't override flags passed
+    # earlier in the command line
     common_parser.add_argument(
-        "--verbose", "-v", action="count", default=0, help="Verbosity level for logging"
+        "--verbose",
+        "-v",
+        action="count",
+        default=argparse.SUPPRESS,
+        help="Verbosity level for logging",
     )
     common_parser.add_argument(
         "--image-frontend",
@@ -123,6 +130,13 @@ def define_common_parser(include_defaults: bool) -> Tuple[argparse.ArgumentParse
         default=[],
         help="Share a host directory with the guest (/path/on/host:/path/on/guest)",
     )
+    common_run_parser.add_argument(
+        "--extra-image",
+        action="append",
+        type=str,
+        default=[],
+        help="Add an extra disk image to the VM",
+    )
 
     # Common arguments for single runs of a vm (e.g., start/run but not create)
     common_oneshot_parser = argparse.ArgumentParser(add_help=False)
@@ -174,9 +188,12 @@ def define_common_parser(include_defaults: bool) -> Tuple[argparse.ArgumentParse
 ) = define_common_parser(include_defaults=False)
 
 
-ROOT_PARSER = argparse.ArgumentParser(prog="transient", parents=[_COMMON_PARSER])
+ROOT_PARSER = argparse.ArgumentParser(prog="transient", parents=[])
 ROOT_PARSER.add_argument(
     "--version", action="version", version=f"{ROOT_PARSER.prog} {__version__}"
+)
+ROOT_PARSER.add_argument(
+    "--verbose", "-v", action="count", default=0, help="Verbosity level for logging"
 )
 _SUBPARSERS = ROOT_PARSER.add_subparsers(dest="root_command")
 

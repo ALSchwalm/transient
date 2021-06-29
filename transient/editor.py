@@ -274,14 +274,20 @@ class ImageEditor:
                 raise
             return None, None
 
+    def __rsync_transfer(self) -> bool:
+        if "rsync" in self.config:
+            assert isinstance(self.config.rsync, bool)
+            return self.config.rsync
+        return False
+
     def copy_in(self, host_path: str, guest_path: str) -> None:
-        transfer = ssh.rsync if self.config.rsync is True else ssh.scp
+        transfer = ssh.rsync if self.__rsync_transfer() is True else ssh.scp
         transfer(
             host_path, utils.join_absolute_paths("/mnt", guest_path), self.ssh_config
         )
 
     def copy_out(self, guest_path: str, host_path: str) -> None:
-        transfer = ssh.rsync if self.config.rsync is True else ssh.scp
+        transfer = ssh.rsync if self.__rsync_transfer() is True else ssh.scp
         transfer(
             utils.join_absolute_paths("/mnt", guest_path),
             host_path,

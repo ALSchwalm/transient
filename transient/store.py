@@ -464,7 +464,7 @@ class VmStore:
 
     def __init__(self, *, backend: BackendImageStore, path: Optional[str] = None) -> None:
         self.backend = backend
-        self.path = utils.default_vmstore_dir()
+        self.path = path if path is not None else utils.default_vmstore_dir()
 
         if not os.path.exists(self.path):
             logging.debug(f"Creating missing VmStore backend at '{self.path}'")
@@ -488,7 +488,7 @@ class VmStore:
         logging.debug(f"Creating vmdir at {vmdir}")
         os.mkdir(vmdir)
 
-        logging.info(f"Creating vm images for vm id={id}")
+        logging.info(f"Creating vm images for vm name={name}")
         images = [self.__create_vm_image(config.primary_image, name, 0)]
 
         self.__create_vm_config(name, config)

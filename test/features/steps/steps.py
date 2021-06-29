@@ -13,7 +13,7 @@ import re
 # Wait for a while, as we may be downloading the image as well
 VM_WAIT_TIME = 60 * 15
 if os.getenv("CI") is not None:
-    DEFAULT_TRANSIENT_ARGS = ["-ssh-timeout", "780", "-shutdown-timeout", "500"]
+    DEFAULT_TRANSIENT_ARGS = ["--ssh-timeout", "780", "--shutdown-timeout", "500"]
     DEFAULT_QEMU_ARGS = ["-m", "1G", "-smp", "2"]
 else:
     DEFAULT_TRANSIENT_ARGS = []
@@ -28,9 +28,13 @@ def build_command(context):
         "-m",
         "transient",
         *config["transient-early-args"],
-        config["command"],
-        *config["transient-args"],
+        *config["command"],
     ]
+
+    if "transient-image" in config and config["transient-image"] is not None:
+        command.append(config["transient-image"])
+
+    command.extend(config["transient-args"])
     command.extend(["--", *config["qemu-args"]])
     return command
 
@@ -69,32 +73,54 @@ def wait_on_vm(context):
     context.returncode = context.handle.returncode
 
 
-@given("a transient vm")
+@given("a transient run command")
 def step_impl(context):
     context.vm_config = {
-        "command": "run",
+        "command": ["run"],
+        "transient-image": None,
         "transient-early-args": [],
         "transient-args": list(DEFAULT_TRANSIENT_ARGS),
         "qemu-args": list(DEFAULT_QEMU_ARGS),
     }
 
 
-@given("a transient vm with no qemu arguments")
+@given("a transient run command with no qemu arguments")
 def step_impl(context):
     context.vm_config = {
-        "command": "run",
+        "command": ["run"],
+        "transient-image": None,
         "transient-early-args": [],
         "transient-args": list(DEFAULT_TRANSIENT_ARGS),
         "qemu-args": [],
     }
 
 
-@given("a transient delete command")
+@given("a transient image rm command")
 def step_impl(context):
     context.vm_config = {
-        "command": "delete",
+        "command": ["image", "rm"],
         "transient-early-args": [],
-        "transient-args": ["-force"],
+        "transient-args": [],
+        "qemu-args": [],
+    }
+
+
+@given("a transient rm command")
+def step_impl(context):
+    context.vm_config = {
+        "command": ["rm"],
+        "transient-early-args": [],
+        "transient-args": [],
+        "qemu-args": [],
+    }
+
+
+@given("a transient create command")
+def step_impl(context):
+    context.vm_config = {
+        "command": ["create"],
+        "transient-early-args": [],
+        "transient-args": [],
         "qemu-args": [],
     }
 
@@ -110,7 +136,7 @@ def step_impl(context):
     # a while for them to finish
     context.wait_time = VM_WAIT_TIME * 6
     context.vm_config = {
-        "command": "build",
+        "command": ["image", "build"],
         "transient-early-args": [],
         "transient-args": [],
         "qemu-args": [],
@@ -119,12 +145,15 @@ def step_impl(context):
 
 @given('a name "{name}"')
 def step_impl(context, name):
-    context.vm_config["transient-args"].extend(["-name", name])
+    if " ".join(context.vm_config["command"]) in ("rm", "ssh"):
+        context.vm_config["transient-args"].append(name)
+    else:
+        context.vm_config["transient-args"].extend(["--name", name])
 
 
 @given('an imagefile "{imagefile}"')
 def step_impl(context, imagefile):
-    context.vm_config["transient-args"].extend(["-file", imagefile])
+    context.vm_config["transient-args"].extend(["--file", imagefile])
 
 
 @given('a build directory "{builddir}"')
@@ -134,32 +163,31 @@ def step_impl(context, builddir):
 
 @given('a disk image "{image}"')
 def step_impl(context, image):
-    context.vm_config["transient-args"].extend(["-image", image])
+    context.vm_config["transient-image"] = image
+
+
+@given('an extra disk image "{image}"')
+def step_impl(context, image):
+    context.vm_config["transient-args"].extend(["--extra-image", image])
 
 
 @given("an http alpine disk image")
 def step_impl(context):
-    context.vm_config["transient-args"].extend(
-        [
-            "-image",
-            "alpine_rel3,http=https://github.com/ALSchwalm/transient-baseimages/releases/download/5/alpine-3.13.qcow2.xz",
-        ]
-    )
+    context.vm_config[
+        "transient-image"
+    ] = "alpine_rel3,http=https://github.com/ALSchwalm/transient-baseimages/releases/download/5/alpine-3.13.qcow2.xz"
 
 
 @given("an http centos disk image")
 def step_impl(context):
-    context.vm_config["transient-args"].extend(
-        [
-            "-image",
-            "centos7_rel3,http=https://github.com/ALSchwalm/transient-baseimages/releases/download/5/centos-7.8.2003.qcow2.xz",
-        ]
-    )
+    context.vm_config[
+        "transient-image"
+    ] = "centos7_rel3,http=https://github.com/ALSchwalm/transient-baseimages/releases/download/5/centos-7.8.2003.qcow2.xz"
 
 
 @given("a ssh console")
 def step_impl(context):
-    context.vm_config["transient-args"].extend(["-ssh-console"])
+    context.vm_config["transient-args"].extend(["--ssh-console"])
 
 
 @given('an extra argument "{arg}"')
@@ -170,35 +198,30 @@ def step_impl(context, arg):
 
 @given("a ssh-with-serial console")
 def step_impl(context):
-    context.vm_config["transient-args"].extend(["-ssh-with-serial"])
+    context.vm_config["transient-args"].extend(["--ssh-with-serial"])
 
 
 @given('a ssh command "{command}"')
 @when('a new ssh command "{command}"')
 def step_impl(context, command):
-    context.vm_config["transient-args"].extend(["-ssh-command", command])
-
-
-@given("the vm is prepare-only")
-def step_impl(context):
-    context.vm_config["transient-args"].extend(["-prepare-only"])
+    context.vm_config["transient-args"].extend(["--ssh-command", command])
 
 
 @given('a frontend "{frontend}"')
 def step_impl(context, frontend):
-    context.vm_config["transient-args"].extend(["-image-frontend", frontend])
+    context.vm_config["transient-args"].extend(["--image-frontend", frontend])
     context.vm_config["image-frontend"] = frontend
 
 
 @given('a backend "{backend}"')
 def step_impl(context, backend):
-    context.vm_config["transient-args"].extend(["-image-backend", backend])
+    context.vm_config["transient-args"].extend(["--image-backend", backend])
     context.vm_config["image-backend"] = backend
 
 
 @given('a sshfs mount of "{mount}"')
 def step_impl(context, mount):
-    context.vm_config["transient-args"].extend(["-shared-folder", mount])
+    context.vm_config["transient-args"].extend(["--shared-folder", mount])
 
 
 @given('a transient flag "{flag}"')
@@ -251,7 +274,7 @@ def step_impl(context):
     directory_mapping = "{}:{}".format(
         context.vm_config["test-file"], context.vm_config["guest-path"]
     )
-    context.vm_config["transient-args"].extend(["-copy-in-before", directory_mapping])
+    context.vm_config["transient-args"].extend(["--copy-in-before", directory_mapping])
 
 
 @given("the guest test file is copied to the host directory after stopping")
@@ -259,7 +282,7 @@ def step_impl(context):
     directory_mapping = "{}:{}".format(
         context.vm_config["guest-path"], context.vm_config["host-directory"]
     )
-    context.vm_config["transient-args"].extend(["-copy-out-after", directory_mapping])
+    context.vm_config["transient-args"].extend(["--copy-out-after", directory_mapping])
 
 
 @given('a qemu flag "{flag}"')
@@ -291,12 +314,11 @@ def step_impl(context, command, name=None, flag=None):
     command = [
         "transient",
         "ssh",
-        "-ssh-timeout",
-        str(VM_WAIT_TIME),
-        "-ssh-command",
-        command,
-        "-name",
         name,
+        "--ssh-timeout",
+        str(VM_WAIT_TIME),
+        "--ssh-command",
+        command,
     ]
     if flag is not None:
         command.append(flag)
@@ -381,8 +403,8 @@ def step_impl(context, name):
 
 @then('the file "{name}" is in the frontend')
 def step_impl(context, name):
-    items = os.listdir(context.vm_config["image-frontend"])
-    assert_that(items, has_item(name))
+    path = os.path.join(context.vm_config["image-frontend"], name)
+    assert os.path.exists(path)
 
 
 @then('the file "{name}" is not in the frontend')

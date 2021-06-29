@@ -4,7 +4,7 @@ Feature: SSH Console
   on the guest.
 
   Scenario: Install SSHFS on a CentOS VM
-    Given a transient vm
+    Given a transient run command
       And an http centos disk image
       And a name "sshfs_test"
       And a ssh command "sudo yum install -y epel-release && sudo yum install -y sshfs"
@@ -12,7 +12,7 @@ Feature: SSH Console
      Then the return code is 0
 
   Scenario: Run VM with a single SSHFS mount
-    Given a transient vm
+    Given a transient run command
       And an http centos disk image
       And a name "sshfs_test"
       And a sshfs mount of "resources/sync:/mnt"
@@ -22,7 +22,7 @@ Feature: SSH Console
       And stdout contains "TEST_FOLDER_INDICATOR"
 
   Scenario: Run VM with two SSHFS mounts
-    Given a transient vm
+    Given a transient run command
       And an http centos disk image
       And a name "sshfs_test"
       And a sshfs mount of "resources/sync:/mnt"

@@ -17,6 +17,7 @@ import os
 import signal
 import subprocess
 import tempfile
+import uuid
 
 from typing import (
     cast,
@@ -84,28 +85,6 @@ class TransientVm:
             and not self.__needs_to_copy_in_files_before_running()
             and self.config.name is None
         )
-
-    def __do_copy_command(self, cmd: List[str], environment: Environ) -> None:
-        cmd_name = cmd[0]
-        try:
-            handle = subprocess.Popen(
-                cmd,
-                env=environment,
-                stdin=subprocess.DEVNULL,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-            )
-            _, raw_stderr = handle.communicate(timeout=self.config.copy_timeout)
-            if handle.poll() == 0:
-                return
-        except subprocess.TimeoutExpired:
-            handle.terminate()
-            _, raw_stderr = handle.communicate()
-            logging.error(
-                f"{cmd_name} timed out after {self.config.copy_timeout} seconds"
-            )
-        stderr = raw_stderr.decode("utf-8").strip()
-        raise RuntimeError(f"{cmd_name} failed: {stderr}")
 
     def __needs_to_copy_in_files_before_running(self) -> bool:
         """Checks if at least one file or directory on the host needs to be copied into the VM
@@ -344,7 +323,10 @@ class TransientVm:
             name = self.vmstore.create_vmstate(create_config)
             self.name = name
         else:
-            self.name = self.config.name
+            if self.config.name is None:
+                self.name = str(uuid.uuid4())
+            else:
+                self.name = self.config.name
 
         if self.__is_stateless() is True:
             self.__do_run()
@@ -364,6 +346,7 @@ class TransientVm:
         self.state = TransientVmState.RUNNING
 
         if not self.__is_stateless():
+            # TODO: what if the 'start' command added extra images
             assert self.vmstate is not None
             self.vm_images = self.vmstate.images
         else:
@@ -371,7 +354,9 @@ class TransientVm:
             # own frontend images, because we will be using the '-snapshot'
             # feature to effectively do that. So just ensure the backend
             # images have been downloaded.
-            self.vm_images = self.__use_backend_images([self.config.primary_image])
+            self.vm_images = self.__use_backend_images(
+                [self.config.primary_image] + self.config.extra_image
+            )
 
         if self.__needs_to_copy_in_files_before_running():
             self.__copy_in_files()

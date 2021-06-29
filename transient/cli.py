@@ -290,7 +290,10 @@ def image_rm_impl(args: argparse.Namespace) -> None:
     imgstore = store.BackendImageStore(path=args.image_backend)
     # TODO: support -force
     for name in args.name:
-        for item in imgstore.backend_image_list(image_identifier=name):
+        images = imgstore.backend_image_list(image_identifier=name)
+        if len(images) == 0:
+            raise utils.TransientError(msg=f"No image in backend with name '{name}'")
+        for item in images:
             imgstore.delete_image(item)
 
 
@@ -360,6 +363,9 @@ def main() -> None:
     parsed = args.ROOT_PARSER.parse_args(transient_args)
 
     set_log_level(parsed.verbose)
+
+    # Verbosity is not used after setting the log level, remove it.
+    delattr(parsed, "verbose")
 
     try:
         __dispatch_command(parsed, qemu_args)
