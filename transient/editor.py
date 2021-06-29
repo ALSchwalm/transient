@@ -275,7 +275,7 @@ class ImageEditor:
             return None, None
 
     def __rsync_transfer(self) -> bool:
-        if "rsync" in self.config:
+        if "rsync" in self.config and self.config.rsync is not None:
             assert isinstance(self.config.rsync, bool)
             return self.config.rsync
         return False
