@@ -308,6 +308,22 @@ def step_impl(context):
     run_vm(context)
 
 
+@when('a vm named "{name}" is started')
+@when('a vm named "{name}" is started with flags "{flags}"')
+def step_impl(context, name, flags=None):
+    if flags is not None:
+        extra_flags = shlex.split(flags)
+    else:
+        extra_flags = []
+    context.vm_config = {
+        "command": ["start"],
+        "transient-early-args": [],
+        "transient-args": [name, *extra_flags],
+        "qemu-args": [],
+    }
+    run_vm(context)
+
+
 @When('a transient ssh command "{command}" runs on "{name}"')
 @When('a transient ssh command "{command}" runs on "{name}" with "{flag}"')
 def step_impl(context, command, name=None, flag=None):
@@ -350,6 +366,7 @@ def step_impl(context):
 
 
 @then("the return code is {code:d}")
+@when("the return code is {code:d}")
 def step_impl(context, code):
     if context.returncode != int(code):
         print("command stdout:")
