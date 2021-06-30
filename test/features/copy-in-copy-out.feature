@@ -1,9 +1,9 @@
 Feature: Copy-in and Copy-out Support
-    In order to facilitate easier file transfer between the host and guest,
-    transient supports copy-in and copy-out support. Given a path on the host and an
-    absolute path on the VM, transient can:
-    - copy the host file or directory to the guest directory before starting the VM
-    - copy the guest file or directory to the host directory after stopping the VM
+  In order to facilitate easier file transfer between the host and guest,
+  transient supports copy-in and copy-out support. Given a path on the host and an
+  absolute path on the VM, transient can:
+  - copy the host file or directory to the guest directory before starting the VM
+  - copy the guest file or directory to the host directory after stopping the VM
 
   Scenario: Copy in a file before starting VM
     Given a transient run command

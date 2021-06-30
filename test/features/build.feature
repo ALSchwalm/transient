@@ -2,7 +2,7 @@ Feature: Image building
   In order to make building backend images simpler, transient supports
   an interface similar to dockerfiles
 
-Scenario: Invalid Imagefile
+  Scenario: Invalid Imagefile
     Given a transient build command
       And the prepare-build make target is run
       And an imagefile "resources/imagefiles/Imagefile.broken"
@@ -12,7 +12,7 @@ Scenario: Invalid Imagefile
      Then the return code is 1
       And stderr contains "INVALID"
 
-Scenario: Build alpine in build directory
+  Scenario: Build alpine in build directory
     Given a transient build command
       And the prepare-build make target is run
       And an imagefile "resources/imagefiles/Imagefile.simple"
@@ -23,7 +23,7 @@ Scenario: Build alpine in build directory
      Then the return code is 0
       And the file "artifacts/build-dir/test-build-alpine.qcow2" exists
 
-Scenario: Build alpine in backend
+  Scenario: Build alpine in backend
     Given a transient build command
       And the prepare-build make target is run
       And an imagefile "resources/imagefiles/Imagefile.alpine313"
@@ -34,7 +34,7 @@ Scenario: Build alpine in backend
      Then the return code is 0
       And the file "artifacts/test-backend/test%2Dbuild%2Dalpine%2Dbackend" exists
 
-Scenario: The built image is usable
+  Scenario: The built image is usable
     Given a transient run command
       And a disk image "test-build-alpine-backend"
       And a backend "./artifacts/test-backend"
@@ -43,7 +43,7 @@ Scenario: The built image is usable
      Then the return code is 0
       And stdout contains "ssh-command working"
 
-Scenario: Images can be built based on other images
+  Scenario: Images can be built based on other images
     Given a transient build command
       And the prepare-build make target is run
       And an imagefile "resources/imagefiles/Imagefile.from_existing"

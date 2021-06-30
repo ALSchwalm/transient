@@ -3,22 +3,22 @@ Feature: Image Support
   transient supports downloading Vagrant libvirt boxes. These can
   then be passed as disk images to QEMU
 
- Scenario: Download a single image
+  Scenario: Download a single image
     Given a transient create command
       And a disk image "generic/alpine38:v3.0.2"
      When the transient command is run
      Then the return code is 0
 
- Scenario: Download an uncompressed image via http
+  Scenario: Download an uncompressed image via http
     Given a transient run command
       And a disk image "test_http_file,http=https://github.com/ALSchwalm/transient-baseimages/releases/download/4/alpine-3.13.qcow2"
       And a backend "./artifacts/test-backend"
-    And a ssh command "echo passed"
+      And a ssh command "echo passed"
      When the vm runs to completion
      Then the return code is 0
       And stdout contains "passed"
 
- Scenario: Set a custom frontend
+  Scenario: Set a custom frontend
     Given a transient create command
       And a name "test-vm"
       And a disk image "generic/alpine38:v3.0.2"
@@ -27,7 +27,7 @@ Feature: Image Support
      Then the return code is 0
       And the file "test-vm/test%2Dvm-0-generic%2Falpine38%3Av3.0.2" is in the frontend
 
- Scenario: Set a custom backend
+  Scenario: Set a custom backend
     Given a transient create command
       And a disk image "generic/alpine38:v3.0.2"
       And a backend "./artifacts/test-backend"
@@ -35,7 +35,7 @@ Feature: Image Support
      Then the return code is 0
       And the file "generic%2Falpine38%3Av3.0.2" is in the backend
 
- Scenario: Delete a frontend image
+  Scenario: Delete a frontend image
     Given a transient rm command
       And a name "test-vm"
       And a frontend "./artifacts/test-frontend"
@@ -43,7 +43,7 @@ Feature: Image Support
      Then the return code is 0
       And the file "test-vm/test%2Dvm-0-generic%2Falpine38%3Av3.0.2" is not in the frontend
 
- Scenario: Delete a backend image
+  Scenario: Delete a backend image
     Given a transient image rm command
       And a disk image "generic/alpine38:v3.0.2"
       And a backend "./artifacts/test-backend"
@@ -51,7 +51,7 @@ Feature: Image Support
      Then the return code is 0
       And the file "generic%2Falpine38%3Av3.0.2" is not in the backend
 
- Scenario: Delete a nonexistent file
+  Scenario: Delete a nonexistent file
     Given a transient image rm command
       And a disk image "backend-does-not-exist"
       And a backend "./artifacts/test-backend"

@@ -2,7 +2,7 @@ Feature: VM Persistence
   In order to support test/dev senarios where disk persistence is
   needed, transient can boot using the same disk multiple times.
 
- Scenario: Reboot a VM keeping changes
+  Scenario: Reboot a VM keeping changes
     Given a transient run command
       And a name "test-vm"
       And a frontend "./artifacts/test-frontend"

@@ -6,7 +6,7 @@ COMPREHENSIVE_EXAMPLE=docs/configuration-file/comprehensive-example.md
 MAX_LINE_LENGTH?=100
 
 .PHONY: check
-check: check-format check-types check-deadcode
+check: check-format check-types check-deadcode check-gherkin
 
 .PHONY: check-format
 check-format:
@@ -20,9 +20,13 @@ check-types:
 check-deadcode:
 	vulture transient --min-confidence 90
 
+.PHONY: check-gherkin
+	reformat-gherkin --alignment right --check test
+
 .PHONY: format
 format:
 	black -l 90 transient test
+	reformat-gherkin --alignment right test
 
 .PHONY: dev
 dev: venv/.dev-finished
