@@ -46,7 +46,7 @@ setup(
             "wheel==0.36.2",
             "pytest==6.2",
             "pytest-cov==2.12",
-            "reformat-gherkin==2.0.2",
+            "reformat-gherkin==2.0.1",
             "vulture==2.3",
         ],
     },
