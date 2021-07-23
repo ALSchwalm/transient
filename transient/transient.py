@@ -331,16 +331,11 @@ class TransientVm:
         if self.__is_stateless() is True:
             self.__do_run()
         else:
-            try:
-                with self.vmstore.lock_vmstate_by_name(
-                    self.name, timeout=_TRANSIENT_RUN_LOCK_TIMEOUT
-                ) as state:
-                    self.vmstate = state
-                    self.__do_run()
-            except store.TransientVmStoreLockHeld:
-                raise utils.TransientError(
-                    msg=f"A VM named '{self.name}' is already running"
-                )
+            with self.vmstore.lock_vmstate_by_name(
+                self.name, timeout=_TRANSIENT_RUN_LOCK_TIMEOUT
+            ) as state:
+                self.vmstate = state
+                self.__do_run()
 
     def __do_run(self) -> None:
         self.state = TransientVmState.RUNNING

@@ -18,14 +18,14 @@ Feature: Image Support
      Then the return code is 0
       And stdout contains "passed"
 
-  Scenario: Set a custom frontend
+  Scenario: Set a custom vmstore
     Given a transient create command
       And a name "test-vm"
       And a disk image "generic/alpine38:v3.0.2"
-      And a frontend "./artifacts/test-frontend"
+      And a vmstore "./artifacts/test-vmstore"
      When the transient command is run
      Then the return code is 0
-      And the file "test-vm/test%2Dvm-0-generic%2Falpine38%3Av3.0.2" is in the frontend
+      And the file "test-vm/test%2Dvm-0-generic%2Falpine38%3Av3.0.2" is in the vmstore
 
   Scenario: Set a custom backend
     Given a transient create command
@@ -35,13 +35,13 @@ Feature: Image Support
      Then the return code is 0
       And the file "generic%2Falpine38%3Av3.0.2" is in the backend
 
-  Scenario: Delete a frontend image
+  Scenario: Delete a vm
     Given a transient rm command
       And a name "test-vm"
-      And a frontend "./artifacts/test-frontend"
+      And a vmstore "./artifacts/test-vmstore"
      When the transient command is run
      Then the return code is 0
-      And the file "test-vm/test%2Dvm-0-generic%2Falpine38%3Av3.0.2" is not in the frontend
+      And the file "test-vm/test%2Dvm-0-generic%2Falpine38%3Av3.0.2" is not in the vmstore
 
   Scenario: Delete a backend image
     Given a transient image rm command

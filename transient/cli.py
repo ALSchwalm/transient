@@ -57,7 +57,7 @@ def create_impl(args: argparse.Namespace) -> None:
 
     config = configuration.create_transient_create_config(vars(args))
     backend = store.BackendImageStore(path=config.image_backend)
-    vmstore = store.VmStore(backend=backend, path=config.image_frontend)
+    vmstore = store.VmStore(backend=backend, path=config.vmstore)
     name = vmstore.create_vmstate(config)
     print(f"Created VM '{name}'")
 
@@ -66,15 +66,10 @@ def start_impl(args: argparse.Namespace) -> None:
     """Start an existing virtual machine"""
     config = configuration.create_transient_start_config(vars(args))
     backend = store.BackendImageStore(path=config.image_backend)
-    vmstore = store.VmStore(backend=backend, path=config.image_frontend)
+    vmstore = store.VmStore(backend=backend, path=config.vmstore)
 
-    try:
-        with vmstore.lock_vmstate_by_name(config.name, _START_CHECK_TIMEOUT) as state:
-            run_config = configuration.run_config_from_create_and_start(
-                state.config, config
-            )
-    except store.TransientVmStoreLockHeld:
-        raise utils.TransientError(msg=f"Unable to lock VM state for '{config.name}'")
+    with vmstore.lock_vmstate_by_name(config.name, _START_CHECK_TIMEOUT) as state:
+        run_config = configuration.run_config_from_create_and_start(state.config, config)
 
     trans = transient.TransientVm(config=run_config, vmstore=vmstore)
     trans.run()
@@ -85,7 +80,7 @@ def run_impl(args: argparse.Namespace) -> None:
     config = configuration.create_transient_run_config(vars(args))
 
     backend = store.BackendImageStore(path=config.image_backend)
-    vmstore = store.VmStore(backend=backend, path=config.image_frontend)
+    vmstore = store.VmStore(backend=backend, path=config.vmstore)
 
     trans = transient.TransientVm(config=config, vmstore=vmstore)
     trans.run()
@@ -96,7 +91,7 @@ _RM_CHECK_TIMEOUT = 1.0
 
 def rm_impl(args: argparse.Namespace) -> None:
     backend = store.BackendImageStore(path=args.image_backend)
-    vmstore = store.VmStore(backend=backend, path=args.image_frontend)
+    vmstore = store.VmStore(backend=backend, path=args.vmstore)
 
     for name in args.name:
         if args.force is True:
@@ -110,10 +105,7 @@ def rm_impl(args: argparse.Namespace) -> None:
             # or load the state.
             vmstore.unsafe_rm_vmstate_by_name(name)
         else:
-            try:
-                vmstore.rm_vmstate_by_name(name, lock_timeout=_RM_CHECK_TIMEOUT)
-            except store.TransientVmStoreLockHeld:
-                raise utils.TransientError(msg=f"VM '{name}' is running")
+            vmstore.rm_vmstate_by_name(name, lock_timeout=_RM_CHECK_TIMEOUT)
 
 
 def __terminate_vm(name: str, vmstore: store.VmStore, kill: bool, verify: bool) -> None:
@@ -137,16 +129,13 @@ def __terminate_vm(name: str, vmstore: store.VmStore, kill: bool, verify: bool) 
         return
 
     # Termination is totally finished once we can lock the vm state
-    try:
-        with vmstore.lock_vmstate_by_name(name, timeout=_TERMINATE_CHECK_TIMEOUT):
-            return
-    except store.TransientVmStoreLockHeld:
-        raise utils.TransientError(f"Failed to terminate VM '{name}")
+    with vmstore.lock_vmstate_by_name(name, timeout=_TERMINATE_CHECK_TIMEOUT):
+        return
 
 
 def stop_impl(args: argparse.Namespace) -> None:
     backend = store.BackendImageStore(path=args.image_backend)
-    vmstore = store.VmStore(backend=backend, path=args.image_frontend)
+    vmstore = store.VmStore(backend=backend, path=args.vmstore)
 
     for name in args.name:
         __terminate_vm(name, vmstore, args.kill is True, verify=False)
@@ -161,7 +150,7 @@ def ssh_impl(args: argparse.Namespace) -> None:
         timeout = None
 
     instances = scan.find_transient_instances(
-        name=args.name, timeout=timeout, vmstore=args.image_frontend
+        name=args.name, timeout=timeout, vmstore=args.vmstore
     )
     if len(instances) > 1:
         raise utils.TransientError(
@@ -191,7 +180,7 @@ def ssh_impl(args: argparse.Namespace) -> None:
 
 def ps_impl(args: argparse.Namespace) -> None:
     backend = store.BackendImageStore(path=args.image_backend)
-    vmstore = store.VmStore(backend=backend, path=args.image_frontend)
+    vmstore = store.VmStore(backend=backend, path=args.vmstore)
 
     # Arbitrary max width to avoid line breaks
     table = beautifultable.BeautifulTable(max_width=1000)
@@ -214,7 +203,7 @@ def ps_impl(args: argparse.Namespace) -> None:
     table.column_alignments["IMAGE"] = beautifultable.BeautifulTable.ALIGN_LEFT
     table.column_alignments["STATUS"] = beautifultable.BeautifulTable.ALIGN_LEFT
 
-    running_instances = scan.find_transient_instances(vmstore=args.image_frontend)
+    running_instances = scan.find_transient_instances(vmstore=args.vmstore)
     for instance in running_instances:
         row = [
             instance.name,
@@ -246,15 +235,10 @@ def ps_impl(args: argparse.Namespace) -> None:
 
 def commit_impl(args: argparse.Namespace) -> None:
     imgstore = store.BackendImageStore(path=args.image_backend)
-    vmstore = store.VmStore(backend=imgstore, path=args.image_frontend)
+    vmstore = store.VmStore(backend=imgstore, path=args.vmstore)
 
-    try:
-        with vmstore.lock_vmstate_by_name(
-            args.vm, timeout=_COMMIT_CHECK_TIMEOUT
-        ) as state:
-            imgstore.commit_vmstate(state, args.name)
-    except store.TransientVmStoreLockHeld:
-        raise utils.TransientError(msg=f"Vm with name '{args.vm}' is running")
+    with vmstore.lock_vmstate_by_name(args.vm, timeout=_COMMIT_CHECK_TIMEOUT) as state:
+        imgstore.commit_vmstate(state, args.name)
 
 
 def image_ls_impl(args: argparse.Namespace) -> None:

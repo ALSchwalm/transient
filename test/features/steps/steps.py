@@ -244,10 +244,10 @@ def step_impl(context, command):
     context.vm_config["transient-args"].extend(["--ssh-command", command])
 
 
-@given('a frontend "{frontend}"')
-def step_impl(context, frontend):
-    context.vm_config["transient-args"].extend(["--image-frontend", frontend])
-    context.vm_config["image-frontend"] = frontend
+@given('a vmstore "{vmstore}"')
+def step_impl(context, vmstore):
+    context.vm_config["transient-args"].extend(["--vmstore", vmstore])
+    context.vm_config["vmstore"] = vmstore
 
 
 @given('a backend "{backend}"')
@@ -456,15 +456,15 @@ def step_impl(context, name):
     assert_that(items, not_(has_item(name)))
 
 
-@then('the file "{name}" is in the frontend')
+@then('the file "{name}" is in the vmstore')
 def step_impl(context, name):
-    path = os.path.join(context.vm_config["image-frontend"], name)
+    path = os.path.join(context.vm_config["vmstore"], name)
     assert os.path.exists(path)
 
 
-@then('the file "{name}" is not in the frontend')
+@then('the file "{name}" is not in the vmstore')
 def step_impl(context, name):
-    items = os.listdir(context.vm_config["image-frontend"])
+    items = os.listdir(context.vm_config["vmstore"])
     assert_that(items, not_(has_item(name)))
 
 

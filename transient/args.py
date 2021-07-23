@@ -27,10 +27,10 @@ def define_common_parser(include_defaults: bool) -> Tuple[argparse.ArgumentParse
         help="Verbosity level for logging",
     )
     common_parser.add_argument(
-        "--image-frontend",
+        "--vmstore",
         type=str,
         default=set_default(utils.default_vmstore_dir()),
-        help="Location to place per-vm disk images",
+        help="Location to place VM images and configuration files",
     )
     common_parser.add_argument(
         "--image-backend",

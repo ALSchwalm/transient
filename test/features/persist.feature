@@ -5,7 +5,7 @@ Feature: VM Persistence
   Scenario: Reboot a VM keeping changes
     Given a transient run command
       And a name "test-vm"
-      And a frontend "./artifacts/test-frontend"
+      And a vmstore "./artifacts/test-vmstore"
       And a disk image "generic/alpine38:v3.0.2"
       And a ssh command "touch persist-is-working"
      When the vm runs to completion

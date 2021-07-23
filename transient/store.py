@@ -589,8 +589,17 @@ class VmStore:
                     name=name, config=config, images=images, vmstore=self
                 )
         except OSError:
-            raise TransientVmStoreLockHeld()
+            raise TransientVmStoreLockHeld(name)
 
 
 class TransientVmStoreLockHeld(utils.TransientError):
-    pass
+    name: str
+
+    def __init__(self, name) -> None:
+        self.name = name
+
+    def __str__(self) -> str:
+        return (
+            f"Unable to acquire lock for the VM named '{self.name}'\n"
+            + "It may be in use by another process"
+        )
