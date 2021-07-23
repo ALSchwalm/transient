@@ -125,6 +125,38 @@ def step_impl(context):
     }
 
 
+@given("a transient commit command")
+def step_impl(context):
+    context.vm_config = {
+        "command": ["commit"],
+        "transient-early-args": [],
+        "transient-args": [],
+        "qemu-args": [],
+    }
+
+
+@given("a transient start command")
+def step_impl(context):
+    context.vm_config = {
+        "command": ["start"],
+        "transient-early-args": [],
+        "transient-args": [],
+        "qemu-args": list(DEFAULT_QEMU_ARGS),
+    }
+
+
+@when('changes to "{vm_name}" are commited as "{image_name}"')
+def step_impl(context, vm_name, image_name):
+    context.vm_config = {
+        "command": ["commit"],
+        "transient-early-args": [],
+        "transient-args": [vm_name, image_name],
+        "qemu-args": [],
+    }
+    run_vm(context)
+    wait_on_vm(context)
+
+
 @given("the prepare-build make target is run")
 def step_impl(context):
     subprocess.run(["make", "prepare-build"])
@@ -145,10 +177,15 @@ def step_impl(context):
 
 @given('a name "{name}"')
 def step_impl(context, name):
-    if " ".join(context.vm_config["command"]) in ("rm", "ssh"):
+    if " ".join(context.vm_config["command"]) in ("rm", "ssh", "commit", "start"):
         context.vm_config["transient-args"].append(name)
     else:
         context.vm_config["transient-args"].extend(["--name", name])
+
+
+@given('a vm name "{name}"')
+def step_impl(context, name):
+    context.vm_config["transient-args"].append(name)
 
 
 @given('an imagefile "{imagefile}"')
@@ -377,6 +414,7 @@ def step_impl(context, code):
 
 
 @then("the return code is nonzero")
+@when("the return code is nonzero")
 def step_impl(context):
     assert_that(context.returncode, not_(equal_to(0)))
 

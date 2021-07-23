@@ -346,7 +346,6 @@ class TransientVm:
         self.state = TransientVmState.RUNNING
 
         if not self.__is_stateless():
-            # TODO: what if the 'start' command added extra images
             assert self.vmstate is not None
             self.vm_images = self.vmstate.images
         else:

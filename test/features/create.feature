@@ -28,6 +28,7 @@ Feature: Creating VMs
       And a name "test-create-vm"
      When the transient command is run
      Then the return code is nonzero
+      And stderr contains "already exists"
 
   Scenario: Flags passed at execution override creation flags
     Given a transient create command
@@ -38,6 +39,14 @@ Feature: Creating VMs
      When the transient command is run
       And the return code is 0
       And a vm named "test-create-vm-override" is started with flags "--ssh-command 'echo start working'"
-      And the vm runs to completion
+      And we wait for the vm to exit
      Then the return code is 0
      Then stdout contains "start working"
+
+  Scenario: Extra disks cannot be passed after creation
+    Given a transient start command
+      And a name "test-create-vm-override"
+      And an extra argument "--extra-image generic/alpine38:v3.0.2"
+     When the transient command is run
+     Then the return code is nonzero
+      And stderr contains "unrecognized arguments"

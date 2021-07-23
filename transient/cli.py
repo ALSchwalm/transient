@@ -34,6 +34,7 @@ from typing import (
 
 _TERMINATE_CHECK_TIMEOUT = 2.5
 _COMMIT_CHECK_TIMEOUT = 2.5
+_START_CHECK_TIMEOUT = 2.5
 
 
 def set_log_level(verbose: int) -> None:
@@ -68,12 +69,12 @@ def start_impl(args: argparse.Namespace) -> None:
     vmstore = store.VmStore(backend=backend, path=config.image_frontend)
 
     try:
-        with vmstore.lock_vmstate_by_name(config.name) as state:
+        with vmstore.lock_vmstate_by_name(config.name, _START_CHECK_TIMEOUT) as state:
             run_config = configuration.run_config_from_create_and_start(
                 state.config, config
             )
     except store.TransientVmStoreLockHeld:
-        raise utils.TransientError(msg=f"A VM named '{config.name}' is already running")
+        raise utils.TransientError(msg=f"Unable to lock VM state for '{config.name}'")
 
     trans = transient.TransientVm(config=run_config, vmstore=vmstore)
     trans.run()

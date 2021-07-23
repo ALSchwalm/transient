@@ -47,6 +47,8 @@ jobs:
       matrix:
         feature:
           - cli
+          - commit
+          - create
           - build
           - config_file
           - copy-in-copy-out

@@ -130,13 +130,6 @@ def define_common_parser(include_defaults: bool) -> Tuple[argparse.ArgumentParse
         default=[],
         help="Share a host directory with the guest (/path/on/host:/path/on/guest)",
     )
-    common_run_parser.add_argument(
-        "--extra-image",
-        action="append",
-        type=str,
-        default=[],
-        help="Add an extra disk image to the VM",
-    )
 
     # Common arguments for single runs of a vm (e.g., start/run but not create)
     common_oneshot_parser = argparse.ArgumentParser(add_help=False)
@@ -170,7 +163,23 @@ def define_common_parser(include_defaults: bool) -> Tuple[argparse.ArgumentParse
         help="Use rsync for copy-in-before/copy-out-after operations",
     )
 
-    return (common_parser, common_ssh_parser, common_run_parser, common_oneshot_parser)
+    # Common arguments for creation of a vm (e.g., create/run but not start)
+    common_create_parser = argparse.ArgumentParser(add_help=False)
+    common_create_parser.add_argument(
+        "--extra-image",
+        action="append",
+        type=str,
+        default=[],
+        help="Add an extra disk image to the VM",
+    )
+
+    return (
+        common_parser,
+        common_ssh_parser,
+        common_run_parser,
+        common_oneshot_parser,
+        common_create_parser,
+    )
 
 
 (
@@ -178,6 +187,7 @@ def define_common_parser(include_defaults: bool) -> Tuple[argparse.ArgumentParse
     _COMMON_SSH_PARSER,
     _COMMON_RUN_PARSER,
     _COMMON_ONESHOT_PARSER,
+    _COMMON_CREATE_PARSER,
 ) = define_common_parser(include_defaults=True)
 
 (
@@ -185,6 +195,7 @@ def define_common_parser(include_defaults: bool) -> Tuple[argparse.ArgumentParse
     _COMMON_SSH_PARSER_NO_DEFAULTS,
     _COMMON_RUN_PARSER_NO_DEFAULTS,
     _COMMON_ONESHOT_PARSER_NO_DEFAULTS,
+    _COMMON_CREATE_PARSER_NO_DEFAULTS,
 ) = define_common_parser(include_defaults=False)
 
 
@@ -200,7 +211,9 @@ _SUBPARSERS = ROOT_PARSER.add_subparsers(dest="root_command")
 
 # Define 'create' subcommand
 CREATE_PARSER = _SUBPARSERS.add_parser(
-    "create", parents=[_COMMON_RUN_PARSER], help="Create (but do not start) a new VM"
+    "create",
+    parents=[_COMMON_RUN_PARSER, _COMMON_CREATE_PARSER],
+    help="Create (but do not start) a new VM",
 )
 CREATE_PARSER.add_argument("primary_image", help="Disk image to boot", type=str)
 CREATE_PARSER.add_argument("--name", help="Virtual machine name", type=str)
@@ -210,7 +223,7 @@ CREATE_PARSER.add_argument("--qemu_args", help=argparse.SUPPRESS, nargs="*", typ
 # Define 'run' subcommand
 RUN_PARSER = _SUBPARSERS.add_parser(
     "run",
-    parents=[_COMMON_RUN_PARSER, _COMMON_ONESHOT_PARSER],
+    parents=[_COMMON_RUN_PARSER, _COMMON_ONESHOT_PARSER, _COMMON_CREATE_PARSER],
     help="Create and run a VM",
 )
 RUN_PARSER.add_argument("primary_image", help="Disk image to boot", type=str)
