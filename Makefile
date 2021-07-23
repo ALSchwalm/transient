@@ -21,6 +21,7 @@ check-deadcode:
 	vulture transient --min-confidence 90
 
 .PHONY: check-gherkin
+check-gherkin:
 	reformat-gherkin --alignment right --check test
 
 .PHONY: format
