@@ -604,7 +604,7 @@ class VmStore:
 class TransientVmStoreLockHeld(utils.TransientError):
     name: str
 
-    def __init__(self, name) -> None:
+    def __init__(self, name: str) -> None:
         self.name = name
         self.msg = (
             f"Unable to acquire lock for the VM named '{self.name}'\n"

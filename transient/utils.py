@@ -64,8 +64,8 @@ def prompt_yes_no(prompt: str, default: Optional[bool] = None) -> bool:
 def format_bytes(size: float) -> str:
     power = 2 ** 10
     n = 0
-    labels = {0: "", 1: "KiB", 2: "MiB", 3: "GiB", 4: "TiB"}
-    while size > power:
+    labels = {0: "B", 1: "KiB", 2: "MiB", 3: "GiB", 4: "TiB"}
+    while size >= power:
         size /= power
         n += 1
     return "{:.2f} {}".format(size, labels[n])

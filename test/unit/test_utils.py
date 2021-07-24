@@ -88,3 +88,31 @@ def test_lock_file_timeout():
                     pass
             except OSError:
                 assert time.time() - start_time >= lock_timeout
+
+
+@pytest.mark.parametrize(
+    ("paths", "expected"),
+    [
+        (("/mnt", "/root"), "/mnt/root"),
+        (("/mnt", "/root/nested"), "/mnt/root/nested"),
+        (("/mnt", "/root", "/other"), "/mnt/root/other"),
+        (("/mnt",), "/mnt"),
+    ],
+)
+def test_join_absolute_paths(paths, expected):
+    assert u.join_absolute_paths(*paths) == expected
+
+
+@pytest.mark.parametrize(
+    ("test_input", "expected"),
+    [
+        (0, "0.00 B"),
+        (1024, "1.00 KiB"),
+        (1024 * 1024 + (1024 * 1024) / 2, "1.50 MiB"),
+        (1024 * 1024 * 1024, "1.00 GiB"),
+        (1024 * 1024 * 1024 * 1024, "1.00 TiB"),
+        (10000, "9.77 KiB"),
+    ],
+)
+def test_format_bytes(test_input, expected):
+    assert u.format_bytes(test_input) == expected
