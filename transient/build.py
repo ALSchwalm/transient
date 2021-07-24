@@ -391,7 +391,14 @@ class ImageBuilder:
         logging.info(f"Parsing Imagefile at '{imagefile_path}'")
         with open(imagefile_path, "r") as file:
             contents = file.read()
-            parsed = IMAGEFILE_PARSER(contents)
+
+            # Until https://github.com/lark-parser/lark/issues/237 is merged in lark,
+            # we can't require instructions end with a newline _or_ EOF, so we
+            # always require a newline. This leads to somewhat confusing errors if
+            # there is no newline at the end of the file.
+            #
+            # So for now, just always append a newline
+            parsed = IMAGEFILE_PARSER(contents + "\n")
             self.instructions = [
                 _build_instruction(instr) for instr in parsed.find_data("instruction")
             ]

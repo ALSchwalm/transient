@@ -26,14 +26,16 @@ def test_storage_safe_decode(test_input, expected):
     assert s.storage_safe_decode(test_input) == expected
 
 
-@pytest.mark.xfail(raises=transient.utils.TransientError)
 def test_image_spec_unknown():
-    s.ImageSpec("name,unknownspec=foobar")
+    with pytest.raises(
+        transient.utils.TransientError, match="Unknown image source protocol.*"
+    ):
+        s.ImageSpec("name,unknownspec=foobar")
 
 
-@pytest.mark.xfail(raises=transient.utils.TransientError)
 def test_image_spec_invalid():
-    s.ImageSpec(",sometext")
+    with pytest.raises(transient.utils.TransientError, match="Invalid image spec"):
+        s.ImageSpec(",sometext")
 
 
 def test_image_spec_implicit_vagrant():

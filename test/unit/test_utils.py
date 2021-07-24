@@ -70,12 +70,12 @@ def test_lock_file_unlocks():
             pass
 
 
-@pytest.mark.xfail(raises=OSError)
 def test_lock_file_not_recursive():
-    with tempfile.NamedTemporaryFile() as f:
-        with u.lock_file(f.name, "r", timeout=0) as locked:
-            with u.lock_file(f.name, "r", timeout=0) as second_lock:
-                pass
+    with pytest.raises(OSError):
+        with tempfile.NamedTemporaryFile() as f:
+            with u.lock_file(f.name, "r", timeout=0) as locked:
+                with u.lock_file(f.name, "r", timeout=0) as second_lock:
+                    pass
 
 
 def test_lock_file_timeout():
