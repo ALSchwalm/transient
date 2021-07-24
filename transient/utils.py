@@ -191,7 +191,10 @@ def lock_file(
 
     logging.debug(f"Lock of '{path}' acquired")
 
-    yield os.fdopen(fd, mode)
+    # Use 'open' like this to ensure the fd is closed (and therefore, that the lock
+    # is released)
+    with open(fd, mode) as f:
+        yield f
 
 
 def read_until(
