@@ -5,6 +5,8 @@ TRANSIENT_KCONFIG=kernel/kernel-config
 COMPREHENSIVE_EXAMPLE=docs/configuration-file/comprehensive-example.md
 MAX_LINE_LENGTH?=100
 
+UNITTEST_DIRS=test/unit
+
 .PHONY: check
 check: check-format check-types check-deadcode check-gherkin
 
@@ -62,12 +64,12 @@ test-%:
 
 .PHONY: unittest
 unittest:
-	pytest -v
+	pytest -v $(UNITTEST_DIRS)
 
 # For running locally. A detailed coverage report
 .PHONY: unittest-coverage
 unittest-coverage:
-	pytest -v --cov=transient --cov-report=term --cov-report=html:artifacts/coverage/html
+	pytest -v $(UNITTEST_DIRS) --cov=transient --cov-report=term --cov-report=html:artifacts/coverage/html
 
 $(TRANSIENT_INITRAMFS) $(TRANSIENT_KERNEL): $(TRANSIENT_KCONFIG) $(TRANSIENT_BUILDROOT_CONFIG)
 	cp $(TRANSIENT_BUILDROOT_CONFIG) kernel/buildroot/.config
