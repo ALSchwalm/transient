@@ -557,6 +557,10 @@ class VmStore:
                     yield state
             except TransientVmStoreLockHeld:
                 continue
+            except TransientVmStoreConfigError as e:
+                logging.warning(f"Failed to load config file for vm named '{name}'")
+                logging.warning(e)
+                continue
 
     @contextlib.contextmanager
     def lock_vmstate_by_name(
@@ -576,7 +580,12 @@ class VmStore:
 
         try:
             with utils.lock_file(cfg_path, "r", timeout) as cfg_file:
-                config = configuration.load_config_file(cast(TextIO, cfg_file), cfg_path)
+                try:
+                    config = configuration.load_config_file(
+                        cast(TextIO, cfg_file), cfg_path
+                    )
+                except Exception as e:
+                    raise TransientVmStoreConfigError(e)
 
                 images = []
                 for filename in os.listdir(dir):
@@ -597,9 +606,15 @@ class TransientVmStoreLockHeld(utils.TransientError):
 
     def __init__(self, name) -> None:
         self.name = name
-
-    def __str__(self) -> str:
-        return (
+        self.msg = (
             f"Unable to acquire lock for the VM named '{self.name}'\n"
             + "It may be in use by another process"
         )
+
+
+class TransientVmStoreConfigError(utils.TransientError):
+    exception: Exception
+
+    def __init__(self, error: Exception) -> None:
+        self.exception = error
+        self.msg = str(error)

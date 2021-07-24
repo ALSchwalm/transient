@@ -32,18 +32,17 @@ from typing import (
     Tuple,
 )
 
-_TERMINATE_CHECK_TIMEOUT = 2.5
-_COMMIT_CHECK_TIMEOUT = 2.5
-_START_CHECK_TIMEOUT = 2.5
+_DEFAULT_TIMEOUT = 2.5
+_TERMINATE_CHECK_TIMEOUT = _DEFAULT_TIMEOUT
+_COMMIT_CHECK_TIMEOUT = _DEFAULT_TIMEOUT
+_START_CHECK_TIMEOUT = _DEFAULT_TIMEOUT
 
 
 def set_log_level(verbose: int) -> None:
-    log_level = logging.ERROR
+    log_level = logging.WARNING
     if verbose == 1:
-        log_level = logging.WARNING
-    elif verbose == 2:
         log_level = logging.INFO
-    elif verbose >= 3:
+    elif verbose >= 2:
         log_level = logging.DEBUG
     logging.basicConfig(
         level=log_level,
@@ -218,9 +217,7 @@ def ps_impl(args: argparse.Namespace) -> None:
         table.append_row(row)
 
     if args.all is True:
-        offline_instances = list(vmstore.vmstates())
-
-        for vm in vmstore.vmstates():
+        for vm in vmstore.vmstates(lock_timeout=0):
             # All VMs returned from vmstates must be offline because we wouldn't be
             # able to lock/read the vmstate otherwise
             row = [vm.name, vm.config.primary_image, "Offline"]
