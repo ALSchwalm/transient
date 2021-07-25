@@ -9,7 +9,7 @@ Feature: PS command
       And a ssh console
       And a name "ps-test-vm"
      When the vm runs
-      And stdout contains "---booted---" within 30 seconds
+      And stdout contains "---booted---" within 600 seconds
       And a transient ps command runs
      Then the return code is 0
       And stdout contains "ps-test-vm"
