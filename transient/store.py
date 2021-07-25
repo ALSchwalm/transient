@@ -503,6 +503,10 @@ class VmStore:
             # Now that we have finished creation, move to the final destination
             logging.debug(f"VM state created. Moving to {vmdir}")
             os.rename(tempdir, vmdir)
+
+            # Make the tempdir again. On older versions of python is is required
+            # to avoid an OSError when the context manager tries to rm the dir
+            os.mkdir(tempdir)
             return name
 
     def unsafe_rm_vmstate_by_name(self, name: str) -> None:
