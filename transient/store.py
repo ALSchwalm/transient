@@ -398,7 +398,6 @@ class BackendImageStore:
         os.remove(image.path)
 
     def commit_vmstate(self, state: "VmPersistentState", name: str) -> BackendImageInfo:
-        # FIXME: the first image is not necessarily the primary image
         primary_image = state.images[0]
 
         safe_name = storage_safe_encode(name)
@@ -471,10 +470,9 @@ class VmStore:
             os.makedirs(self.path, exist_ok=True)
 
     def __vm_dir(self, name: str) -> str:
-        return os.path.join(self.path, name)
+        return os.path.join(self.path, storage_safe_encode(name))
 
     def create_vmstate(self, config: configuration.CreateConfig) -> str:
-        # TODO: this should be made in a tmpdir and moved once finished
         if config.name is None:
             name = str(uuid.uuid4())
         else:
@@ -482,18 +480,30 @@ class VmStore:
 
         vmdir = self.__vm_dir(name)
 
+        logging.info(f"Creating VM state for VM name='{name}'")
+
         if os.path.exists(vmdir):
             raise utils.TransientError(f"A VM with name {name} already exists")
 
-        logging.debug(f"Creating vmdir at {vmdir}")
-        os.mkdir(vmdir)
+        with tempfile.TemporaryDirectory(prefix=".", dir=self.path) as tempdir:
+            logging.debug(f"Using {tempdir} as temporary state directory")
 
-        logging.info(f"Creating vm images for vm name={name}")
-        images = [self.__create_vm_image(config.primary_image, name, 0)]
+            logging.debug(f"Creating VM disk images")
+            images = [self.__create_vm_image(config.primary_image, name, 0, tempdir)]
+            images.extend(
+                [
+                    self.__create_vm_image(img, name, i + 1, tempdir)
+                    for i, img in enumerate(config.extra_image)
+                ]
+            )
 
-        self.__create_vm_config(name, config)
+            logging.debug(f"Creating configuration file")
+            self.__create_vm_config(name, config, tempdir)
 
-        return name
+            # Now that we have finished creation, move to the final destination
+            logging.debug(f"VM state created. Moving to {vmdir}")
+            os.rename(tempdir, vmdir)
+            return name
 
     def unsafe_rm_vmstate_by_name(self, name: str) -> None:
         shutil.rmtree(self.__vm_dir(name))
@@ -506,20 +516,20 @@ class VmStore:
             shutil.rmtree(self.__vm_dir(name))
 
     def __create_vm_config(
-        self, vm_name: str, config: configuration.CreateConfig
+        self, vm_name: str, config: configuration.CreateConfig, dir_path: str
     ) -> None:
-        with open(os.path.join(self.__vm_dir(vm_name), "config"), "w") as f:
+        with open(os.path.join(dir_path, "config"), "w") as f:
             # Always keep the keys in order when we dump them
             f.write(toml.dumps(collections.OrderedDict(sorted(config.items()))))
 
     def __create_vm_image(
-        self, image_spec: str, vm_name: str, num: int
+        self, image_spec: str, vm_name: str, num: int, dir_path: str
     ) -> FrontendImageInfo:
         backing_image = self.backend.retrieve_image(image_spec)
         safe_vmname = storage_safe_encode(vm_name)
         safe_image_identifier = storage_safe_encode(backing_image.identifier)
         new_image_path = os.path.join(
-            self.__vm_dir(vm_name), f"{safe_vmname}-{num}-{safe_image_identifier}"
+            dir_path, f"{safe_vmname}-{num}-{safe_image_identifier}"
         )
 
         if os.path.exists(new_image_path):
@@ -552,13 +562,17 @@ class VmStore:
         self, lock_timeout: Optional[float] = None
     ) -> Iterator[VmPersistentState]:
         for name in os.listdir(self.path):
+            if name.startswith("."):
+                continue
+
+            real_name = storage_safe_decode(name)
             try:
-                with self.lock_vmstate_by_name(name, timeout=lock_timeout) as state:
+                with self.lock_vmstate_by_name(real_name, timeout=lock_timeout) as state:
                     yield state
             except TransientVmStoreLockHeld:
                 continue
             except TransientVmStoreConfigError as e:
-                logging.warning(f"Failed to load config file for vm named '{name}'")
+                logging.warning(f"Failed to load config file for vm named '{real_name}'")
                 logging.warning(e)
                 continue
 

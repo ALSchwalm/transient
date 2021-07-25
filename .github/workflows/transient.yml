@@ -54,6 +54,7 @@ jobs:
           - copy-in-copy-out
           - images
           - persist
+          - ps
           - ssh_console
           - ssh_command
           - sshfs

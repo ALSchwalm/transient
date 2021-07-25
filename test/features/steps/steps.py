@@ -10,6 +10,8 @@ import stat
 import sys
 import re
 
+import transient.utils
+
 # Wait for a while, as we may be downloading the image as well
 VM_WAIT_TIME = 60 * 15
 if os.getenv("CI") is not None:
@@ -46,14 +48,15 @@ def run_vm(context):
 
     # Use temporary files rather than PIPE, because it may fill and block
     # before we start reading
-    context.raw_stdout = tempfile.TemporaryFile("wb+", buffering=0)
-    context.raw_stderr = tempfile.TemporaryFile("wb+", buffering=0)
+    context.raw_stdout = tempfile.NamedTemporaryFile("rb+", buffering=0)
+    context.raw_stderr = tempfile.NamedTemporaryFile("rb+", buffering=0)
     handle = subprocess.Popen(
         command,
         stdin=subprocess.PIPE,
         stdout=context.raw_stdout,
         stderr=context.raw_stderr,
         env=env,
+        bufsize=0,
     )
     context.handle = handle
     context.add_cleanup(handle.terminate)
@@ -361,8 +364,8 @@ def step_impl(context, name, flags=None):
     run_vm(context)
 
 
-@When('a transient ssh command "{command}" runs on "{name}"')
-@When('a transient ssh command "{command}" runs on "{name}" with "{flag}"')
+@when('a transient ssh command "{command}" runs on "{name}"')
+@when('a transient ssh command "{command}" runs on "{name}" with "{flag}"')
 def step_impl(context, command, name=None, flag=None):
     command = [
         "transient",
@@ -388,6 +391,21 @@ def step_impl(context, command, name=None, flag=None):
     context.stderr = stderr.decode("utf-8")
     context.returncode = handle.returncode
     handle.wait()
+
+
+@when("a transient ps command runs")
+@when('a transient ps command runs with "{flag}"')
+def step_impl(context, flag=None):
+    context.vm_config = {
+        "command": ["ps"],
+        "transient-early-args": [],
+        "transient-args": [],
+        "qemu-args": [],
+    }
+    if flag is not None:
+        context.vm_config["transient-args"].append(flag)
+    run_vm(context)
+    wait_on_vm(context)
 
 
 @when("the vm is provided stdin")
@@ -509,3 +527,13 @@ def _set_env_var(context, name, value):
 @given('environment variable {name} is set to ""')
 def step_impl(context, name):
     _set_env_var(context, name, "")
+
+
+@when('stdout contains "{}" within {} seconds')
+def step_impl(context, text, wait):
+    import io
+
+    with open(context.raw_stdout.name, "rb") as f:
+        transient.utils.read_until(
+            io.BufferedReader(f), text.encode("utf-8"), timeout=int(wait)
+        )

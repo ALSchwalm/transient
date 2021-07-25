@@ -20,12 +20,12 @@ Feature: Image Support
 
   Scenario: Set a custom vmstore
     Given a transient create command
-      And a name "test-vm"
+      And a name "image-test-vm"
       And a disk image "generic/alpine38:v3.0.2"
       And a vmstore "./artifacts/test-vmstore"
      When the transient command is run
      Then the return code is 0
-      And the file "test-vm/test%2Dvm-0-generic%2Falpine38%3Av3.0.2" is in the vmstore
+      And the file "image%2Dtest%2Dvm/image%2Dtest%2Dvm-0-generic%2Falpine38%3Av3.0.2" is in the vmstore
 
   Scenario: Set a custom backend
     Given a transient create command
@@ -37,26 +37,11 @@ Feature: Image Support
 
   Scenario: Delete a vm
     Given a transient rm command
-      And a name "test-vm"
+      And a name "image-test-vm"
       And a vmstore "./artifacts/test-vmstore"
      When the transient command is run
      Then the return code is 0
-      And the file "test-vm/test%2Dvm-0-generic%2Falpine38%3Av3.0.2" is not in the vmstore
-
-  Scenario: Delete a backend image
-    Given a transient image rm command
-      And a disk image "generic/alpine38:v3.0.2"
-      And a backend "./artifacts/test-backend"
-     When the transient command is run
-     Then the return code is 0
-      And the file "generic%2Falpine38%3Av3.0.2" is not in the backend
-
-  Scenario: Delete a nonexistent file
-    Given a transient image rm command
-      And a disk image "backend-does-not-exist"
-      And a backend "./artifacts/test-backend"
-     When the transient command is run
-     Then the return code is 1
+      And the file "image%2Dtest%2Dvm/image%2Dtest%2Dvm-0-generic%2Falpine38%3Av3.0.2" is not in the vmstore
 
   Scenario: Use multiple image files
     Given a transient run command
@@ -107,3 +92,18 @@ Feature: Image Support
      When the transient command is run
      Then the return code is 1
       And there is no stack trace
+
+  Scenario: Delete a backend image
+    Given a transient image rm command
+      And a disk image "generic/alpine38:v3.0.2"
+      And a backend "./artifacts/test-backend"
+     When the transient command is run
+     Then the return code is 0
+      And the file "generic%2Falpine38%3Av3.0.2" is not in the backend
+
+  Scenario: Delete a nonexistent file
+    Given a transient image rm command
+      And a disk image "backend-does-not-exist"
+      And a backend "./artifacts/test-backend"
+     When the transient command is run
+     Then the return code is 1

@@ -6,27 +6,26 @@ Feature: SSH Command
 
   Scenario: Run an SSH command on a running VM
     Given a transient run command
-      And a disk image "generic/alpine38:v3.0.2"
+      And an http alpine disk image
       And a ssh command "sleep 600"
       And a ssh console
-      And a name "test-vm"
+      And a name "ssh-test-vm"
      When the vm runs
-      And a transient ssh command "echo ssh-command working" runs on "test-vm" with "--wait"
+      And a transient ssh command "echo ssh-command working" runs on "ssh-test-vm" with "--wait"
      Then the return code is 0
       And stdout contains "ssh-command working"
       And the vm is terminated
 
   Scenario: Attempt to connect to a VM that is not running
-     When a transient ssh command "echo ssh-command working" runs on "test-vm"
+     When a transient ssh command "echo ssh-command working" runs on "ssh-test-vm"
      Then the return code is 1
       And stderr contains "No running VM"
 
   Scenario: Run ssh with custom options
     Given a transient run command
-      And a disk image "generic/alpine38:v3.0.2"
+      And an http alpine disk image
       And a ssh command "sleep 600"
       And a ssh console
-      And a name "test-vm"
       And an extra argument "--ssh-option ControlMaster=yes"
       And an extra argument "--ssh-option ControlPath=myctrlsock"
      When the vm runs
