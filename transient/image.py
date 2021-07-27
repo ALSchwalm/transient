@@ -213,9 +213,8 @@ class FrontendImageProtocol(BaseImageProtocol):
             )
         frontend_image = candidates[0]
         with open(frontend_image.path, "rb") as existing_file:
-            utils.copy_with_progress(
-                existing_file, destination, frontend_image.actual_size
-            )
+            frontend_image_size = os.path.getsize(frontend_image.path)
+            utils.copy_with_progress(existing_file, destination, frontend_image_size)
 
         logging.info("Image copy complete.")
 
