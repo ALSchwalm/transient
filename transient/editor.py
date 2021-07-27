@@ -140,7 +140,9 @@ class ImageEditor:
         self.close()
         return None
 
-    def _read_fstab(self) -> str:
+    def _mount_root(self) -> None:
+        """Guess that the root partition is the one with /etc/fstab, and mount
+        it at /mnt"""
         blkinfo, _ = self.run_command_in_guest(
             "lsblk -no FSTYPE,PATH -P", capture_stdout=True, capture_stderr=True
         )
@@ -157,19 +159,16 @@ class ImageEditor:
 
             logging.info(f"Attempting to read /etc/fstab from {path} (fstype={fstype})")
             try:
-                raw_fstab, _ = self.run_command_in_guest(
+                self.run_command_in_guest(
                     [
                         f"mount -t {fstype} {path} /mnt > /dev/null",
-                        "cat /mnt/etc/fstab",
-                        "umount /mnt > /dev/null",
+                        "[ -f /mnt/etc/fstab ]",
                     ],
-                    capture_stdout=True,
-                    capture_stderr=True,
                 )
-                assert raw_fstab is not None
-                return raw_fstab
+                return
             except Exception as e:
                 logging.debug(f"Failed to read /etc/fstab from {path}: {e}")
+                self.run_command_in_guest("umount /mnt > /dev/null", allowfail=True)
                 continue
         raise RuntimeError("Unable to locate /etc/fstab")
 
@@ -179,42 +178,20 @@ class ImageEditor:
             f"vgchange -ay", allowfail=True, capture_stdout=True, capture_stderr=True
         )
 
-        fstab_contents = self._read_fstab()
-        for entry in self._parse_fstab(fstab_contents):
-            self.run_command_in_guest(f"mount {entry[0]} -t {entry[2]} /mnt/{entry[1]}")
+        self._mount_root()
 
-    def _excluded_mount_fstypes(self) -> List[str]:
-        return ["nfs", "cifs", "swap"]
+        # We need devices in our chroot. Mount /sys and /proc just in case.
+        for bind in ["dev", "sys", "proc"]:
+            self.run_command_in_guest(
+                f"[ -d /mnt/{bind} ] && mount -o bind /{bind} /mnt/{bind}", allowfail=True
+            )
 
-    def _parse_fstab(self, contents: str) -> List[Tuple[str, str, str]]:
-        entries: List[Tuple[str, str, str]] = []
-        for num, line in enumerate(contents.split("\n")):
-            if line.strip() == "" or line.strip().startswith("#"):
-                continue
-
-            match = re.match(r"^(\S+)\s+(\S+)\s+(\S+)(?:\s+(\S+))?", line)
-            assert match is not None
-
-            dev = match.group(1)
-            mnt = match.group(2)
-            fstype = match.group(3)
-            options = match.group(4)
-
-            if fstype.lower() in self._excluded_mount_fstypes():
-                logging.info(f"Ignoring fstab line {num} due to fstype '{fstype}'")
-                continue
-            elif mnt.lower() == "none":
-                logging.info(f"Ignoring fstab line {num} due to mount point 'none'")
-                continue
-            elif options is not None and "noauto" in options:
-                logging.info(f"Ignoring fstab line {num} due to 'noauto'")
-                continue
-            entries.append((dev, mnt, fstype))
-
-        def sort_key(entry: Tuple[str, str, str]) -> int:
-            return len(pathlib.Path(entry[1]).parts)
-
-        return sorted(entries, key=sort_key)
+        # Let mount+chroot handle it.
+        #   mount will mount everything it can, and skip what it can't.  It
+        #   will automatically skip filesystems we don't have in our kernel,
+        #   such as nfs, cifs, other problematic things. It will safely skip
+        #   special values such as /dev/root.
+        self.run_command_in_guest("chroot /mnt mount -a", allowfail=True)
 
     def _spawn_qemu(self, disk: str) -> qemu.QemuRunner:
         with utils.package_file_path(
