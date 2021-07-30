@@ -4,7 +4,18 @@ from . import utils
 from . import qemu
 from . import __version__
 
-from typing import Any, Tuple
+from typing import Any, Tuple, Optional
+
+
+class TransientArgumentDefaultsHelpFormatter(argparse.HelpFormatter):
+    def _get_help_string(self, action: argparse.Action) -> Optional[str]:
+        help = action.help
+        if help is not None and "%(default)" not in help:
+            if action.default not in (argparse.SUPPRESS, None, []):
+                defaulting_nargs = [argparse.OPTIONAL, argparse.ZERO_OR_MORE]
+                if action.option_strings or action.nargs in defaulting_nargs:
+                    help += " [default: %(default)s]"
+        return help
 
 
 def define_common_parser(include_defaults: bool) -> Tuple[argparse.ArgumentParser, ...]:
@@ -199,7 +210,9 @@ def define_common_parser(include_defaults: bool) -> Tuple[argparse.ArgumentParse
 ) = define_common_parser(include_defaults=False)
 
 
-ROOT_PARSER = argparse.ArgumentParser(prog="transient", parents=[])
+ROOT_PARSER = argparse.ArgumentParser(
+    prog="transient", parents=[], formatter_class=TransientArgumentDefaultsHelpFormatter
+)
 ROOT_PARSER.add_argument(
     "--version", action="version", version=f"{ROOT_PARSER.prog} {__version__}"
 )
@@ -214,6 +227,7 @@ CREATE_PARSER = _SUBPARSERS.add_parser(
     "create",
     parents=[_COMMON_RUN_PARSER, _COMMON_CREATE_PARSER],
     help="Create (but do not start) a new VM",
+    formatter_class=TransientArgumentDefaultsHelpFormatter,
 )
 CREATE_PARSER.add_argument("primary_image", help="Disk image to boot", type=str)
 CREATE_PARSER.add_argument("--name", help="Virtual machine name", type=str)
@@ -225,6 +239,7 @@ RUN_PARSER = _SUBPARSERS.add_parser(
     "run",
     parents=[_COMMON_RUN_PARSER, _COMMON_ONESHOT_PARSER, _COMMON_CREATE_PARSER],
     help="Create and run a VM",
+    formatter_class=TransientArgumentDefaultsHelpFormatter,
 )
 RUN_PARSER.add_argument("primary_image", help="Disk image to boot", type=str)
 RUN_PARSER.add_argument("--name", help="Virtual machine name", type=str)
@@ -240,6 +255,7 @@ START_PARSER = _SUBPARSERS.add_parser(
     "start",
     parents=[_COMMON_RUN_PARSER_NO_DEFAULTS, _COMMON_ONESHOT_PARSER_NO_DEFAULTS],
     help="Start a previously created VM",
+    formatter_class=TransientArgumentDefaultsHelpFormatter,
 )
 START_PARSER.add_argument("name", help="Virtual machine name", type=str)
 START_PARSER.add_argument("--qemu_args", help=argparse.SUPPRESS, nargs="*", type=str)
@@ -247,7 +263,10 @@ START_PARSER.add_argument("--qemu_args", help=argparse.SUPPRESS, nargs="*", type
 
 # Define 'rm' subcommand
 RM_PARSER = _SUBPARSERS.add_parser(
-    "rm", parents=[_COMMON_PARSER], help="Remove a created VM"
+    "rm",
+    parents=[_COMMON_PARSER],
+    help="Remove a created VM",
+    formatter_class=TransientArgumentDefaultsHelpFormatter,
 )
 RM_PARSER.add_argument(
     "--force",
@@ -261,7 +280,10 @@ RM_PARSER.add_argument("name", help="Virtual machine name", nargs="+")
 
 # Define 'stop' subcommand
 STOP_PARSER = _SUBPARSERS.add_parser(
-    "stop", parents=[_COMMON_PARSER], help="Stop a running VM"
+    "stop",
+    parents=[_COMMON_PARSER],
+    help="Stop a running VM",
+    formatter_class=TransientArgumentDefaultsHelpFormatter,
 )
 STOP_PARSER.add_argument(
     "-kill",
@@ -275,7 +297,10 @@ STOP_PARSER.add_argument("name", help="Virtual machine name", nargs="+")
 
 # Define 'ssh' subcommand
 SSH_PARSER = _SUBPARSERS.add_parser(
-    "ssh", parents=[_COMMON_PARSER, _COMMON_SSH_PARSER], help="SSH to a running VM"
+    "ssh",
+    parents=[_COMMON_PARSER, _COMMON_SSH_PARSER],
+    help="SSH to a running VM",
+    formatter_class=TransientArgumentDefaultsHelpFormatter,
 )
 SSH_PARSER.add_argument(
     "--wait",
@@ -289,7 +314,10 @@ SSH_PARSER.add_argument("name", help="Virtual machine name")
 
 # Define 'ps' subcommand
 PS_PARSER = _SUBPARSERS.add_parser(
-    "ps", parents=[_COMMON_PARSER], help="Print information about VMs"
+    "ps",
+    parents=[_COMMON_PARSER],
+    help="Print information about VMs",
+    formatter_class=TransientArgumentDefaultsHelpFormatter,
 )
 PS_PARSER.add_argument(
     "-a",
@@ -310,6 +338,7 @@ COMMIT_PARSER = _SUBPARSERS.add_parser(
     "commit",
     parents=[_COMMON_PARSER],
     help="Create a new disk image from the state of a current VM",
+    formatter_class=TransientArgumentDefaultsHelpFormatter,
 )
 COMMIT_PARSER.add_argument(
     "vm", help="VM to use as the source of the new image", type=str
@@ -319,19 +348,28 @@ COMMIT_PARSER.add_argument("name", help="Name of the new image", type=str)
 
 # Define 'image' subcommands
 IMAGE_PARSER = _SUBPARSERS.add_parser(
-    "image", parents=[], help="Print information about images"
+    "image",
+    parents=[],
+    help="Print information about images",
+    formatter_class=TransientArgumentDefaultsHelpFormatter,
 )
 _IMAGE_SUBPARSERS = IMAGE_PARSER.add_subparsers(dest="image_command")
 _IMAGE_SUBPARSERS.required = True
 
 # Define 'image ls' subcommand
 IMAGE_LS_PARSER = _IMAGE_SUBPARSERS.add_parser(
-    "ls", parents=[_COMMON_PARSER], help="Print information about images"
+    "ls",
+    parents=[_COMMON_PARSER],
+    help="Print information about images",
+    formatter_class=TransientArgumentDefaultsHelpFormatter,
 )
 
 # Define 'image build' subcommand
 IMAGE_BUILD_PARSER = _IMAGE_SUBPARSERS.add_parser(
-    "build", parents=[_COMMON_PARSER], help="Build a new image"
+    "build",
+    parents=[_COMMON_PARSER],
+    help="Build a new image",
+    formatter_class=TransientArgumentDefaultsHelpFormatter,
 )
 IMAGE_BUILD_PARSER.add_argument(
     "build_dir", metavar="build-dir", help="Directory use as root of build", type=str
@@ -361,7 +399,10 @@ IMAGE_BUILD_PARSER.add_argument(
 
 # Define 'image rm' subcommand
 IMAGE_RM_PARSER = _IMAGE_SUBPARSERS.add_parser(
-    "rm", parents=[_COMMON_PARSER], help="Remove an image from the backend"
+    "rm",
+    parents=[_COMMON_PARSER],
+    help="Remove an image from the backend",
+    formatter_class=TransientArgumentDefaultsHelpFormatter,
 )
 IMAGE_RM_PARSER.add_argument("name", help="Image name", nargs="+")
 IMAGE_RM_PARSER.add_argument(
