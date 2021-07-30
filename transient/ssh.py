@@ -298,3 +298,19 @@ def rsync(
             capture_stdout=capture_stdout,
             capture_stderr=capture_stderr,
         )
+
+
+def transfer(
+    host_path: str,
+    guest_path: str,
+    ssh_config: SshConfig,
+    copy_from: bool,
+    use_rsync: bool,
+) -> None:
+    func = rsync if use_rsync is True else scp
+    logging.debug(
+        "Transfer host_path={} guest_path={} copy_from={} func={}".format(
+            host_path, guest_path, copy_from, func
+        )
+    )
+    func(host_path, guest_path, ssh_config, copy_from)

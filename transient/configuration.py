@@ -276,3 +276,10 @@ def config_requires_ssh_console(config: Union[RunConfig, CreateConfig]) -> bool:
         or config.ssh_command is not None
         or config.ssh_with_serial is True
     )
+
+
+def config_wants_rsync_transfer(config: Union[RunConfig, BuildConfig]) -> bool:
+    if config.rsync is not None:
+        assert isinstance(config.rsync, bool)
+        return config.rsync is True
+    return False

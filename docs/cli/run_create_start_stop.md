@@ -98,6 +98,7 @@ ones common to both subcommands are described below:
                                      (/absolute/path/on/VM:path/on/host)
 - `--copy-timeout COPY_TIMEOUT`: The maximum time to wait for a copy-in-before or
                                  copy-out-after operation to complete
+- `--direct-copy`:    Transfier files specified via `--copy-in-before` or `--copy-in-after` directly to the VM, instead of a background 'builder' VM
 - `--rsync`: Use rsync for copy-in-before/copy-out-after operations
 
 #### VM Creation Flags
@@ -150,7 +151,7 @@ described below:
 ### Create and Start an Alpine VM
 
 ```
-$ transient create --name bar --ssh alpine_rel3,http=https://github.com/ALSchwalm/transient-baseimages/releases/download/5/alpine-3.13.qcow2.xz
+$ transient create --name bar --ssh alpine_rel3,http=https://github.com/ALSchwalm/transient-baseimages/releases/download/6/alpine-3.13.qcow2.xz
 Unable to find image 'alpine' in backend
 Downloading image from 'https://github.com/ALSchwalm/transient-baseimages/releases/download/5/alpine-3.13.qcow2.xz'
 100% |##############################################|  12.7 MiB/s |  35.0 MiB | Time:  0:00:02
