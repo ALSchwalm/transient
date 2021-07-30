@@ -298,7 +298,7 @@ class TransientVm:
         data = {
             "name": self.name,
             "vmstore": self.vmstore.path,
-            "primary_image": self.config.primary_image,
+            "primary_image": store.ImageSpec(self.config.primary_image).name,
             "stateless": self.__is_stateless(),
         }
 

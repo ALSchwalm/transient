@@ -28,7 +28,6 @@ from typing import (
     TypeVar,
     Dict,
     Type,
-    TextIO,
     Tuple,
 )
 
@@ -220,7 +219,7 @@ def ps_impl(args: argparse.Namespace) -> None:
         for vm in vmstore.vmstates(lock_timeout=0):
             # All VMs returned from vmstates must be offline because we wouldn't be
             # able to lock/read the vmstate otherwise
-            row = [vm.name, vm.config.primary_image, "Offline"]
+            row = [vm.name, vm.primary_image.backend_image_name, "Offline"]
             if args.pid is True:
                 row.append("")
             if args.ssh is True:
@@ -261,7 +260,6 @@ def image_ls_impl(args: argparse.Namespace) -> None:
 
 
 def image_build_impl(args: argparse.Namespace) -> None:
-    """List transient disk information"""
     config = configuration.create_transient_build_config(vars(args))
     imgstore = store.BackendImageStore(path=config.image_backend)
     builder = build.ImageBuilder(config, imgstore)
@@ -270,12 +268,21 @@ def image_build_impl(args: argparse.Namespace) -> None:
 
 def image_rm_impl(args: argparse.Namespace) -> None:
     imgstore = store.BackendImageStore(path=args.image_backend)
-    # TODO: support -force
+    vmstore = store.VmStore(backend=imgstore, path=args.vmstore)
+
     for name in args.name:
         images = imgstore.backend_image_list(image_identifier=name)
         if len(images) == 0:
             raise utils.TransientError(msg=f"No image in backend with name '{name}'")
         for item in images:
+            vms_using_image = vmstore.backend_image_in_use(item)
+            if vms_using_image:
+                msg = f"Backend '{item.identifier}' is in use by {vms_using_image}"
+                if not args.force:
+                    raise utils.TransientError(msg=msg)
+                else:
+                    logging.warning(msg)
+
             imgstore.delete_image(item)
 
 

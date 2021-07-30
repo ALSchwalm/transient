@@ -13,7 +13,6 @@ from typing import (
     TypeVar,
     Dict,
     Type,
-    TextIO,
     Tuple,
     Iterator,
     Mapping,
@@ -169,10 +168,10 @@ StartConfig = NewType("StartConfig", _Config)
 BuildConfig = NewType("BuildConfig", _Config)
 
 
-def load_config_file(config_file: TextIO, path: str) -> CreateConfig:
+def load_config_file(path: str) -> CreateConfig:
     """Parses the given config file and returns the contents as a dictionary
     """
-    contents = config_file.read()
+    contents = open(path, "r").read()
 
     try:
         parsed_config_file = toml.loads(contents)

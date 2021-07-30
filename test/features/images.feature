@@ -93,13 +93,21 @@ Feature: Image Support
      Then the return code is 1
       And there is no stack trace
 
-  Scenario: Delete a backend image
+  Scenario: Delete a backend image in use
     Given a transient image rm command
       And a disk image "generic/alpine38:v3.0.2"
       And a backend "./artifacts/test-backend"
      When the transient command is run
+     Then the return code is nonzero
+      And stderr contains "Backend 'generic/alpine38:v3.0.2' is in use by"
+
+  Scenario: Delete a backend image forced
+    Given a transient image rm command
+      And an extra argument "--force"
+      And a disk image "generic/alpine38:v3.0.2"
+      And a backend "./artifacts/test-backend"
+     When the transient command is run
      Then the return code is 0
-      And the file "generic%2Falpine38%3Av3.0.2" is not in the backend
 
   Scenario: Delete a nonexistent file
     Given a transient image rm command

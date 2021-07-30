@@ -14,6 +14,7 @@ import tarfile
 import tempfile
 import time
 import toml
+import traceback
 import urllib.parse
 import uuid
 
@@ -30,7 +31,7 @@ from typing import (
     IO,
     Pattern,
     Iterator,
-    TextIO,
+    NewType,
 )
 
 # Time to wait in seconds between attempts to acquire vmstate lock
@@ -272,6 +273,7 @@ class BaseImageInfo:
     format: str
     path: str
     image_info: Dict[str, Any]
+    identifier: str
 
     def __init__(self, store: "BackendImageStore", path: str) -> None:
         stdout, _ = utils.run_check_retcode(
@@ -285,26 +287,34 @@ class BaseImageInfo:
         self.filename = os.path.split(self.image_info["filename"])[-1]
         self.format = self.image_info["format"]
         self.path = path
+        self.identifier = storage_safe_decode(self.filename)
+
+    def __eq__(self, other: object) -> bool:
+        if not isinstance(other, BaseImageInfo):
+            return NotImplemented
+        return self.path == other.path
 
 
 class BackendImageInfo(BaseImageInfo):
-    identifier: str
-
     def __init__(self, store: "BackendImageStore", path: str) -> None:
         super().__init__(store, path)
-        self.identifier = storage_safe_decode(self.filename)
 
 
 class FrontendImageInfo(BaseImageInfo):
     vm_name: str
     disk_number: int
     backend: Optional[BackendImageInfo]
+    backend_image_name: str
 
     def __init__(self, store: "BackendImageStore", path: str):
         super().__init__(store, path)
         vm_name, number, image = self.filename.split("-")
         self.vm_name = storage_safe_decode(vm_name)
         self.disk_number = int(number)
+
+        # This is useful as it is _not_ optional
+        self.backend_image_name = storage_safe_decode(image)
+
         backend_path = self.image_info["full-backing-filename"]
         try:
             self.backend = BackendImageInfo(store, backend_path)
@@ -443,6 +453,7 @@ class VmPersistentState:
     images: List[FrontendImageInfo]
     config: configuration.CreateConfig
     store: "VmStore"
+    primary_image: FrontendImageInfo
 
     def __init__(
         self,
@@ -455,6 +466,20 @@ class VmPersistentState:
         self.images = images
         self.config = config
         self.store = vmstore
+        self.primary_image = self.__find_primary_image(images)
+
+    def __find_primary_image(self, images: List[FrontendImageInfo]) -> FrontendImageInfo:
+        for image in self.images:
+            if image.backend_image_name == ImageSpec(self.config.primary_image).name:
+                return image
+        raise utils.TransientError(msg=f"Unable to find primary image for '{self.name}'")
+
+
+# 'Unlocked' state is just used by the type checker to ensure we can't do
+# things like remove a VM we don't hold the lock for. A natural consequence of
+# this, however, is that unlocked state may not be accurate, as a process
+# holding the lock may have changed (or completely removed) the VM.
+UnlockedVmPersistentState = NewType("UnlockedVmPersistentState", VmPersistentState)
 
 
 class VmStore:
@@ -526,6 +551,16 @@ class VmStore:
             # Always keep the keys in order when we dump them
             f.write(toml.dumps(collections.OrderedDict(sorted(config.items()))))
 
+    def __path_is_potential_vmstate_dir(self, path: str) -> bool:
+        if os.path.basename(path).startswith("."):
+            return False
+        try:
+            if not os.path.isdir(path):
+                return False
+        except OSError:
+            return False
+        return True
+
     def __create_vm_image(
         self, image_spec: str, vm_name: str, num: int, dir_path: str
     ) -> FrontendImageInfo:
@@ -566,7 +601,7 @@ class VmStore:
         self, lock_timeout: Optional[float] = None
     ) -> Iterator[VmPersistentState]:
         for name in os.listdir(self.path):
-            if name.startswith("."):
+            if not self.__path_is_potential_vmstate_dir(os.path.join(self.path, name)):
                 continue
 
             real_name = storage_safe_decode(name)
@@ -579,8 +614,57 @@ class VmStore:
                 logging.warning(
                     f"Failed to load state for vm named '{real_name}'. Error:"
                 )
-                logging.warning(e)
+                logging.exception(e)
                 continue
+
+    def backend_image_in_use(self, backend_image: BackendImageInfo) -> List[str]:
+        vm_names = []
+        for vmstate in self.unlocked_vmstates():
+            for frontend_image in vmstate.images:
+                if frontend_image.backend == backend_image:
+                    vm_names.append(vmstate.name)
+                    break
+        return vm_names
+
+    def unlocked_vmstates(self) -> Iterator[UnlockedVmPersistentState]:
+        for name in os.listdir(self.path):
+            if not self.__path_is_potential_vmstate_dir(os.path.join(self.path, name)):
+                continue
+
+            real_name = storage_safe_decode(name)
+            state = self.get_vmstate_by_name(real_name)
+            if state is None:
+                continue
+            yield state
+
+    def get_vmstate_by_name(self, name: str) -> Optional[UnlockedVmPersistentState]:
+        dir = self.__vm_dir(name)
+        if not os.path.exists(dir):
+            return None
+
+        cfg_path = os.path.join(dir, "config")
+        if not os.path.exists(cfg_path):
+            return None
+
+        # This may throw at any point, as we don't hold the lock, so
+        # supress errors and return None
+        try:
+            config = configuration.load_config_file(cfg_path)
+
+            images = []
+            for filename in os.listdir(dir):
+                path = os.path.join(dir, filename)
+                if filename == "config":
+                    continue
+                else:
+                    images.append(FrontendImageInfo(self.backend, path))
+            return UnlockedVmPersistentState(
+                VmPersistentState(name=name, config=config, images=images, vmstore=self)
+            )
+        except Exception:
+            logging.debug("Error while attempting to get state:")
+            logging.debug(traceback.format_exc())
+            return None
 
     @contextlib.contextmanager
     def lock_vmstate_by_name(
@@ -599,19 +683,10 @@ class VmStore:
         cfg_path = os.path.join(dir, "config")
 
         try:
-            with utils.lock_file(cfg_path, "r", timeout) as cfg_file:
-                config = configuration.load_config_file(cast(TextIO, cfg_file), cfg_path)
-
-                images = []
-                for filename in os.listdir(dir):
-                    path = os.path.join(dir, filename)
-                    if filename == "config":
-                        continue
-                    else:
-                        images.append(FrontendImageInfo(self.backend, path))
-                yield VmPersistentState(
-                    name=name, config=config, images=images, vmstore=self
-                )
+            with utils.lock_file(cfg_path, "r", timeout):
+                state = self.get_vmstate_by_name(name)
+                assert state is not None
+                yield state
         except OSError:
             raise TransientVmStoreLockHeld(name)
 
