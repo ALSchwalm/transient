@@ -5,18 +5,15 @@ nav:
     - Overview: index.md
     - Installation: installation.md
     - Command Line Interface:
-      - 'Run': cli/run.md
-      - 'Build': cli/build.md
-      - 'List': cli/list.md
-      - 'Delete': cli/delete.md
-      - 'SSH': cli/ssh.md
-    - Configuration File:
-      - 'Overview': configuration-file/overview.md
-      - 'Comprehensive Example': configuration-file/comprehensive-example.md
-    - Images:
+      - 'create/run/start/stop': cli/run_create_start_stop.md
+      - 'image': cli/image.md
+      - 'ps': cli/ps.md
+      - 'rm': cli/rm.md
+      - 'ssh': cli/ssh.md
+      - 'commit': cli/commit.md
+    - Disk Images:
       - 'Getting Existing Images': images/images.md
       - 'Building Images': images/building.md
       - 'Imagefile Format': images/format.md
     - Feature Details:
       - 'Using Shared Folders': details/shared-folders.md
-      - 'Usage with Docker': details/docker.md

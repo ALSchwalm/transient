@@ -3,9 +3,9 @@
 This page describes the architecture of the image building subsystem of
 `transient`. While this should not generally be necessary to know, it can
 sometimes be helpful when debugging an image building failure. For
-instructions on how to use the `build` subcommand of `transient`, see
-[this page](../cli/build.md). For information on the `Imagefile` format,
-see the [Imagefile format page](./format.md).
+instructions on how to use the `build` subcommand of `transient image`, see
+[this page](../cli/image.md#building-images). For information on the `Imagefile`
+format, see the [Imagefile format page](./format.md).
 
 ### Types of Builds
 

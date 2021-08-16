@@ -1,6 +1,0 @@
-[transient]
-image = ["alpine,http=https://github.com/ALSchwalm/transient-baseimages/releases/download/2/alpine-3.13.qcow2"]
-prepare-only = true
-
-[qemu]
-qemu-args = []

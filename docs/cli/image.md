@@ -1,34 +1,91 @@
-## Build
+## Image
 
-The `build` subcommand for `transient` allows the user to easily build
+The `transient image` subcommand allows the user to create, list and remove
+disk images. The sections below describe this usage in more detail.
+
+### Usage
+
+#### Listing Images
+
+The `image ls` subcommand allows the user to list existing read-only backend
+disk images present in the Disk Backend.
+
+```
+transient image ls [-h] [--verbose] [--image-backend IMAGE_BACKEND]
+```
+
+- `--image-backend BACKEND`: Use the provided `BACKEND` path as the location
+to search for existing images
+
+#### Removing Images
+
+The `image rm` subcommand can be used to remove an existing backend image.
+
+```
+transient image rm [-h] [--verbose] [--vmstore VMSTORE]
+                   [--image-backend IMAGE_BACKEND] [--force]
+                   name [name ...]
+```
+
+- `--vmstore VMSTORE`: By default, `transient` will not allow backend images
+associated with existing VMs to be removed. The `--vmstore` flag allows the user
+to configure a location of any custom VM store
+
+- `--image-backend BACKEND`: Use the provided `BACKEND` path as the location
+to search for existing images
+
+- `--force`: Force removal of the backend image even if a VM is using it
+
+- `name`: The image name to remove
+
+#### Building Images
+
+The `image build` subcommand for `transient` allows the user to easily build
 virtual machine disk images using a simple declarative format similar to
 the well-known Dockerfile format. This format is described on the
 [Imagefile Format page](../images/format.md). Additional information about
 the image building process and architecture can be found on the
 [Building Images page](../images/building.md).
 
-### Usage
-
 ```
-transient build -name NAME [-h] [-local] [-file IMAGEFILE]
-                [-image-backend IMAGE_BACKEND] BUILD_DIR
+transient image build [-h] [--verbose] [--vmstore VMSTORE]
+                      [--image-backend IMAGE_BACKEND] [--file FILE] [--name NAME]
+                      [--qmp-timeout QMP_TIMEOUT] [--ssh-timeout SSH_TIMEOUT]
+                      [--local]
+                      build-dir
 ```
 
-- `-name NAME`: Associate the new image with the provided `NAME`. For `-local`
-builds, the image is stored as `<NAME>.qcow2` in the `BUILD_DIR`. For non-`local`
+- `--name NAME`: Associate the new image with the provided `NAME`. For `--local`
+builds, the image is stored as `<NAME>.qcow2` in the `build-dir`. For non-`local`
 builds, the `NAME` is used as the backend name.
 
-- `-local`: Store the built image in the `BUILD_DIR` instead of the `IMAGE_BACKEND`.
-
-- `-file`: Use the specified `IMAGEFILE` instead of the default `<BUILDDIR>/Imagefile`.
-
-- `-image-backend BACKEND`: Use the provided `BACKEND` path as the location to store
+- `--image-backend BACKEND`: Use the provided `BACKEND` path as the location to store
 the built image
 
-- `BUILDDIR`: The build directory is the root directory when refering to relative paths
+- `--file`: Use the specified `IMAGEFILE` instead of the default `<build-dir>/Imagefile`.
+
+- `--ssh-timeout SSH_TIMEOUT`: Wait `SSH_TIMEOUT` seconds when attempting to make an SSH
+connection with the virtual build machine before failing. Defaults to 90 seconds.
+
+- `--qmp-timeout QMP_TIMEOUT`: Wait `QMP_TIMEOUT` seconds when attempting to connect
+to the QEMU QMP endpoint before failing.
+
+- `--local`: Store the built image in the `build-dir` instead of the `IMAGE_BACKEND`.
+
+- `build-dir`: The build directory is the root directory when refering to relative paths
 from the Imagefile.
 
 ### Examples
+
+#### Listing existing backend images
+
+```
+$ transient image ls
+ NAME                     VIRT SIZE   REAL SIZE
+ centos/7:2004.01         40.00 GiB    1.05 GiB
+ generic/alpine38:v3.0.2  32.00 GiB   99.69 MiB
+ alpine_rel3              20.00 GiB  131.44 MiB
+```
 
 #### Build a VM image based on Centos 7
 
@@ -43,7 +100,7 @@ RUN echo 'myhostname' > /etc/hostname
 Then if we run the following:
 
 ```
-$ transient build -name example build_dir/
+$ transient image build --name example build_dir/
 Step 1/3 : FROM centos/7:2004.01
 100% |##############################################|   1.7 GiB/s |   1.1 GiB | Time:  0:00:00
 Step 2/3 : RUN yum install -y nano
@@ -100,7 +157,7 @@ Then a new image named `example` will exist in the backend. A virtual machine us
 this backend can be started as usual:
 
 ```
-$ transient run -image example -cmd hostname -- -enable-kvm -m 1G
+$ transient run example --ssh-command hostname -- -enable-kvm -m 1G
 Finished preparation. Starting virtual machine
 myhostname
 ```

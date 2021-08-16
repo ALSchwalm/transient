@@ -286,7 +286,7 @@ STOP_PARSER = _SUBPARSERS.add_parser(
     formatter_class=TransientArgumentDefaultsHelpFormatter,
 )
 STOP_PARSER.add_argument(
-    "-kill",
+    "--kill",
     "-k",
     help="Send SIGKILL instead of SIGTERM",
     action="store_const",

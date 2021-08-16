@@ -4,7 +4,6 @@ import logging
 import os
 import signal
 import sys
-import toml
 import uuid
 
 from . import args
@@ -35,6 +34,7 @@ _DEFAULT_TIMEOUT = 2.5
 _TERMINATE_CHECK_TIMEOUT = _DEFAULT_TIMEOUT
 _COMMIT_CHECK_TIMEOUT = _DEFAULT_TIMEOUT
 _START_CHECK_TIMEOUT = _DEFAULT_TIMEOUT
+_RM_CHECK_TIMEOUT = 1.0
 
 
 def set_log_level(verbose: int) -> None:
@@ -82,9 +82,6 @@ def run_impl(args: argparse.Namespace) -> None:
 
     trans = transient.TransientVm(config=config, vmstore=vmstore)
     trans.run()
-
-
-_RM_CHECK_TIMEOUT = 1.0
 
 
 def rm_impl(args: argparse.Namespace) -> None:

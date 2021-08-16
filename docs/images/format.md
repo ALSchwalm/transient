@@ -3,7 +3,7 @@
 `transient` image builds are defined using a declarative format similar to
 the Dockerfile. Each `Imagefile` is made of a series of commands that may
 consist of a number of parts. For more information on _how_ these commands
-are executed, see the [Building Images page](./building.md).
+are executed, see the [Building Images page](../cli/image.md#building-images).
 
 `Imagefile`s currently support the following commands:
 
@@ -15,8 +15,7 @@ The `FROM` command has two forms and is required in every `Imagefile`:
 - `FROM scratch`
 
 The first form defines an image that is derived from the specified `baseimage`.
-These can be specified using the same format as the `-image` flag to the `run`
-command line subcommand.
+These can be specified using the same format as the `transient run` command.
 
 The second form defines a 'base' image. When using this form, the next command
 _must_ be a `DISK` command which will specify the size of the new disk.
@@ -73,7 +72,7 @@ The `COPY` command has one form:
 - `COPY <source> <destination>`
 
 This command copies a file from a path relative to the `BUILD_DIR` (see the
-[build command page](../cli/build.md)) to the `<destination>` path in the
+[build command page](../cli/image.md#building-images)) to the `<destination>` path in the
 new image.
 
 ### ADD
