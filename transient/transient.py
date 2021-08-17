@@ -55,6 +55,7 @@ class TransientVm:
     vmstore: store.VmStore
     config: configuration.RunConfig
     vm_images: Sequence[store.BaseImageInfo]
+    primary_image: Optional[store.BaseImageInfo]
     ssh_config: Optional[ssh.SshConfig]
     qemu_runner: Optional[qemu.QemuRunner]
     qemu_should_die: bool
@@ -66,6 +67,7 @@ class TransientVm:
         self.config = config
         self.vmstore = vmstore
         self.vm_images = []
+        self.primary_image = None
         self.ssh_config = None
         self.qemu_runner = None
         self.qemu_should_die = False
@@ -105,7 +107,7 @@ class TransientVm:
         except ValueError:
             raise RuntimeError(
                 f"Invalid file mapping: {path_mapping}."
-                + " -copy-in-before must be (path/on/host:/absolute/path/on/guest)"
+                + " --copy-in-before must be (path/on/host:/absolute/path/on/guest)"
             )
 
         if not os.path.exists(host_path):
@@ -114,15 +116,13 @@ class TransientVm:
         if not vm_absolute_path.startswith("/"):
             raise RuntimeError(f"Absolute path for guest required: {vm_absolute_path}")
 
-        # For now copy only to the first "-image" specified.
-        vm_image = self.vm_images[0]
-        assert isinstance(vm_image, store.FrontendImageInfo)
-        assert vm_image.backend is not None
+        assert isinstance(self.primary_image, store.FrontendImageInfo)
+        assert self.primary_image.backend is not None
         logging.info(
-            f"Copying from '{host_path}' to '{vm_image.backend.identifier}:{vm_absolute_path}'"
+            f"Copying from '{host_path}' to '{self.primary_image.backend.identifier}:{vm_absolute_path}'"
         )
 
-        with editor.ImageEditor(self.config, vm_image.path) as edit:
+        with editor.ImageEditor(self.config, self.primary_image.path) as edit:
             edit.copy_in(host_path, vm_absolute_path)
 
     def __needs_to_copy_out_files_after_running(self) -> bool:
@@ -144,7 +144,7 @@ class TransientVm:
         except ValueError:
             raise RuntimeError(
                 f"Invalid file mapping: {path_mapping}."
-                + " -copy-out-after must be (/absolute/path/on/guest:path/on/host)"
+                + " --copy-out-after must be (/absolute/path/on/guest:path/on/host)"
             )
 
         if not os.path.isdir(host_path):
@@ -153,15 +153,13 @@ class TransientVm:
         if not vm_absolute_path.startswith("/"):
             raise RuntimeError(f"Absolute path for guest required: {vm_absolute_path}")
 
-        # For now copy only to the first "-image" specified.
-        vm_image = self.vm_images[0]
-        assert isinstance(vm_image, store.FrontendImageInfo)
-        assert vm_image.backend is not None
+        assert isinstance(self.primary_image, store.FrontendImageInfo)
+        assert self.primary_image.backend is not None
         logging.info(
-            f"Copying from '{vm_image.backend.identifier}:{vm_absolute_path}' to '{host_path}'"
+            f"Copying from '{self.primary_image.backend.identifier}:{vm_absolute_path}' to '{host_path}'"
         )
 
-        with editor.ImageEditor(self.config, vm_image.path) as edit:
+        with editor.ImageEditor(self.config, self.primary_image.path) as edit:
             edit.copy_out(vm_absolute_path, host_path)
 
     def __qemu_added_args(self) -> List[str]:
@@ -343,13 +341,15 @@ class TransientVm:
         if not self.__is_stateless():
             assert self.vmstate is not None
             self.vm_images = self.vmstate.images
+            self.primary_image = self.vmstate.primary_image
         else:
             # If the VM is completely stateless, we don't need to make our
             # own frontend images, because we will be using the '-snapshot'
             # feature to effectively do that. So just ensure the backend
             # images have been downloaded.
-            self.vm_images = self.__use_backend_images(
-                [self.config.primary_image] + self.config.extra_image
+            self.primary_image = self.__use_backend_images([self.config.primary_image])[0]
+            self.vm_images = [self.primary_image] + self.__use_backend_images(
+                self.config.extra_image
             )
 
         if self.__needs_to_copy_in_files_before_running():
