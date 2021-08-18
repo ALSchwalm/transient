@@ -117,8 +117,8 @@ def __terminate_vm(name: str, vmstore: store.VmStore, kill: bool, verify: bool) 
         sig = signal.SIGKILL
     else:
         sig = signal.SIGTERM
-    logging.info(f"Sending signal {sig} to PID {vm.pid}")
-    os.kill(vm.pid, signal.SIGTERM)
+    logging.info(f"Sending signal {sig} to PID {vm.transient_pid}")
+    os.kill(vm.transient_pid, signal.SIGTERM)
 
     if verify is False or vm.stateless is True:
         return
@@ -207,7 +207,7 @@ def ps_impl(args: argparse.Namespace) -> None:
         ]
 
         if args.pid is True:
-            row.append(str(instance.pid))
+            row.append(str(instance.transient_pid))
         if args.ssh is True:
             row.append(str(instance.ssh_port is not None))
         table.append_row(row)

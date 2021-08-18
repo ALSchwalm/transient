@@ -298,6 +298,7 @@ class TransientVm:
             "vmstore": self.vmstore.path,
             "primary_image": store.ImageSpec(self.config.primary_image).name,
             "stateless": self.__is_stateless(),
+            "transient_pid": os.getpid(),
         }
 
         if configuration.config_requires_ssh(self.config):

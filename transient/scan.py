@@ -20,22 +20,25 @@ SCAN_ENVIRON_SENTINEL = "__TRANSIENT_PROCESS"
 
 
 class TransientInstance:
-    pid: int
+    qemu_pid: int
+    transient_pid: int
     start_time: datetime.datetime
     primary_image: str
     stateless: bool
     name: Optional[str]
     ssh_port: Optional[int]
 
-    def __init__(self, pid: int, start_time: datetime.datetime, config: Dict[Any, Any]):
+    def __init__(
+        self, qemu_pid: int, start_time: datetime.datetime, config: Dict[Any, Any]
+    ):
         self.name = None
         self.ssh_port = None
         self.__dict__.update(config)
         self.start_time = start_time
-        self.pid = pid
+        self.qemu_pid = qemu_pid
 
     def __repr__(self) -> str:
-        return f"TransientInstance(pid={self.pid}, start_time={self.start_time}, ...)"
+        return f"TransientInstance(qemu_pid={self.qemu_pid}, start_time={self.start_time}, ...)"
 
 
 def _read_pid_environ(pid_dir: str) -> Dict[str, str]:
