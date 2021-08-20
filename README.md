@@ -91,7 +91,7 @@ RUN echo 'myhostname' > /etc/hostname
 ```
 
 For additional information on building images, see the
-[Building Images page](https://transient.readthedocs.io/en/latest/images/building.html)
+[Building Images page](https://transient.readthedocs.io/en/latest/cli/image/#building-images)
 of the docs.
 
 License
