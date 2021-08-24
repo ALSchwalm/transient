@@ -208,6 +208,13 @@ class QemuRunner:
     def __find_qemu_bin_name(self) -> str:
         return "qemu-system-x86_64"
 
+    def _make_command_line(self) -> List[str]:
+        return [self.bin_name] + self.args
+
+    @staticmethod
+    def _qemu_preexec() -> None:
+        linux.set_death_signal(signal.SIGTERM)
+
     def start(self) -> "subprocess.Popen[bytes]":
         logging.info(
             f"Starting qemu process '{self.bin_name}' with arguments '{self.args}'"
@@ -222,14 +229,14 @@ class QemuRunner:
             stdin, stdout, stderr = subprocess.DEVNULL, None, None
 
         self.proc_handle = subprocess.Popen(
-            [self.bin_name] + self.args,
+            self._make_command_line(),
             stdin=stdin,
             stdout=stdout,
             stderr=stderr,
             env=self.env,
             # Automatically send SIGTERM to this process when the main Transient
             # process dies
-            preexec_fn=lambda: linux.set_death_signal(signal.SIGTERM),
+            preexec_fn=self._qemu_preexec,
             pass_fds=self.pass_fds,
         )
 
@@ -266,17 +273,22 @@ class QemuRunner:
 
         return self.proc_handle.returncode
 
-    def terminate(self) -> None:
+    def terminate(self, kill_after: Optional[float] = None) -> None:
         if self.proc_handle is None:
             raise RuntimeError("QemuRunner cannot terminate without being started")
-        if self.proc_handle.poll():
-            self.proc_handle.terminate()
+        self.proc_handle.terminate()
+        if kill_after is not None:
+            try:
+                self.proc_handle.wait(kill_after)
+            except subprocess.TimeoutExpired:
+                logging.error("Qemu process did not terminate. Forcibly killing...")
+                self.kill()
 
     def kill(self) -> None:
         if self.proc_handle is None:
             raise RuntimeError("QemuRunner cannot be killed without being started")
-        if self.proc_handle.poll():
-            self.proc_handle.kill()
+        self.proc_handle.kill()
+        self.proc_handle.wait()
 
     def returncode(self) -> int:
         if self.proc_handle is None:
@@ -285,3 +297,6 @@ class QemuRunner:
             raise RuntimeError("QemuRunner cannot get a returncode without being exited")
         else:
             return self.proc_handle.returncode
+
+    def is_running(self) -> bool:
+        return self.proc_handle is not None and self.proc_handle.poll() is None
