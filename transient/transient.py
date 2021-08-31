@@ -462,7 +462,7 @@ class TransientVm:
 
                 # If we didn't reach the expected shutdown, this will terminte
                 # the VM. Otherwise, this does nothing.
-                self.qemu_runner.terminate()
+                self.qemu_runner.terminate(kill_after=self.config.shutdown_timeout)
 
             # Note that we always return the SSH exit code, even if the guest failed to
             # shut down. This ensures the shutdown_timeout=0 case is handled as expected.
