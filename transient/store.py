@@ -2,17 +2,13 @@ import collections
 import contextlib
 import json
 import logging
-import fcntl
 import os
 import progressbar  # type: ignore
 import re
 import requests
 import shutil
-import stat
-import subprocess
 import tarfile
 import tempfile
-import time
 import toml
 import traceback
 import urllib.parse
@@ -26,21 +22,13 @@ from typing import (
     List,
     Dict,
     Any,
-    Union,
-    Tuple,
     IO,
     Pattern,
     Iterator,
     NewType,
 )
 
-# Time to wait in seconds between attempts to acquire vmstate lock
-_VMSTATE_LOCK_INTERVAL = 0.1
-
 _BLOCK_TRANSFER_SIZE = 64 * 1024  # 64KiB
-
-# vm_name-disk_number-image_name-image_version
-_VM_IMAGE_REGEX = re.compile(r"^[^\-]+-[^\-]+-[^\-]+$")
 
 # image_name-image_version
 _BACKEND_IMAGE_REGEX = re.compile(r"^[^\-]+$")
@@ -355,15 +343,6 @@ class BackendImageStore:
     def __default_qemu_img_bin(self) -> str:
         return "qemu-img"
 
-    def __image_info(self, path: str) -> BaseImageInfo:
-        filename = os.path.split(path)[-1]
-        if _VM_IMAGE_REGEX.match(filename):
-            return FrontendImageInfo(self, path)
-        elif _BACKEND_IMAGE_REGEX.match(filename):
-            return BackendImageInfo(self, path)
-        else:
-            raise utils.TransientError(f"Invalid image file name: '{filename}'")
-
     def backend_path(self, spec: ImageSpec) -> str:
         safe_name = storage_safe_encode(spec.name)
         return os.path.join(self.backend, safe_name)
@@ -671,7 +650,6 @@ class VmStore:
     def lock_vmstate_by_name(
         self, name: str, timeout: Optional[float] = None
     ) -> Iterator[VmPersistentState]:
-        config = None
         dir = self.__vm_dir(name)
 
         if not os.path.exists(dir):

@@ -6,11 +6,10 @@ import signal
 import subprocess
 import time
 
-from typing import Optional, List, IO, Any, Union, Dict, Tuple
+from typing import Optional, List, IO, Any, Union, Tuple
 
 from . import linux
 from . import utils
-from . import static
 from . import qemu
 
 SSH_CONNECTION_WAIT_TIME = 30

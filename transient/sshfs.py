@@ -7,7 +7,7 @@ import threading
 import inspect
 import io
 
-from typing import Optional, List, cast
+from typing import Optional, cast
 
 from . import linux
 from . import utils

@@ -12,7 +12,6 @@ from typing import (
 )
 
 from . import ssh
-from . import qemu
 
 _PID_ROOT = "/proc"
 SCAN_DATA_FD = "__TRANSIENT_DATA_FD"

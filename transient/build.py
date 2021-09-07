@@ -2,11 +2,7 @@ import enum
 import os
 import lark  # type: ignore
 import logging
-import json
 import pathlib
-import re
-import shutil
-import stat
 import subprocess
 
 from . import configuration
@@ -15,11 +11,8 @@ from . import qemu
 from . import store
 from . import utils
 from . import ssh
-from . import static
 
 from typing import (
-    cast,
-    Any,
     Sequence,
     Callable,
     List,
@@ -127,7 +120,7 @@ class RunInstruction(ImageInstruction):
     def commands(self, builder: "ImageBuilder") -> Sequence[editor.Command]:
         return [
             GuestChrootCommand(
-                self.command, builder.editor.ssh_config, builder.config.ssh_timeout
+                self.command, builder.image_editor.ssh_config, builder.config.ssh_timeout
             )
         ]
 
@@ -148,7 +141,7 @@ class CopyInstruction(ImageInstruction):
 
         def _copy_func(host_src: str) -> Callable[[], Tuple[None, None]]:
             def _inner() -> Tuple[None, None]:
-                builder.editor.copy_in(host_src, self.destination)
+                builder.image_editor.copy_in(host_src, self.destination)
                 return None, None
 
             return _inner
@@ -178,7 +171,7 @@ class AddInstruction(ImageInstruction):
 
         def _copy_func(host_src: str) -> Callable[[], Tuple[None, None]]:
             def _inner() -> Tuple[None, None]:
-                builder.editor.copy_in(host_src, self.destination)
+                builder.image_editor.copy_in(host_src, self.destination)
                 return None, None
 
             return _inner
@@ -192,7 +185,7 @@ class AddInstruction(ImageInstruction):
                 commands.append(
                     editor.GuestCommand(
                         f"bsdtar xfP - --directory={effective_destination}",
-                        builder.editor.ssh_config,
+                        builder.image_editor.ssh_config,
                         builder.config.ssh_timeout,
                         stdin=open(host_src, "rb"),
                     )
@@ -217,7 +210,7 @@ class DiskInstruction(ImageInstruction):
         return [
             editor.GuestCommand(
                 f"echo label:{self.type} | sfdisk /dev/sda",
-                builder.editor.ssh_config,
+                builder.image_editor.ssh_config,
                 builder.config.ssh_timeout,
             )
         ]
@@ -300,7 +293,7 @@ class PartitionInstruction(ImageInstruction):
         commands = [
             editor.GuestCommand(
                 f"echo '{partition_cmd}' | sfdisk /dev/sda -a",
-                builder.editor.ssh_config,
+                builder.image_editor.ssh_config,
                 builder.config.ssh_timeout,
             )
         ]
@@ -309,7 +302,7 @@ class PartitionInstruction(ImageInstruction):
             commands.append(
                 editor.GuestCommand(
                     f"mkfs.{self.format} {self.options} /dev/sda{self.number}",
-                    builder.editor.ssh_config,
+                    builder.image_editor.ssh_config,
                     builder.config.ssh_timeout,
                 )
             )
@@ -374,7 +367,7 @@ class ImageBuilder:
     qemu: qemu.QemuRunner
     from_instruction: FromInstruction
     chroot_ready: bool
-    editor: editor.ImageEditor
+    image_editor: editor.ImageEditor
 
     def __init__(
         self, config: configuration.BuildConfig, imgstore: store.BackendImageStore
@@ -522,8 +515,8 @@ class ImageBuilder:
         return working
 
     def __inspect_guest_chroot(self) -> None:
-        config = self.editor.ssh_config.override(
-            args=[*self.editor.ssh_config.args, "-t"]
+        config = self.image_editor.ssh_config.override(
+            args=[*self.image_editor.ssh_config.args, "-t"]
         )
         client = ssh.SshClient(config, command="unshare --fork --pid chroot /mnt /bin/sh")
 
@@ -537,7 +530,7 @@ class ImageBuilder:
 
     def __prepare_chroot(self) -> None:
         # Adapted from arch-chroot
-        self.editor.run_command_in_guest(
+        self.image_editor.run_command_in_guest(
             [
                 'mount udev "/mnt/dev" -t devtmpfs -o mode=0755,nosuid',
                 'mount proc "/mnt/proc" -t proc -o nosuid,noexec,nodev',
@@ -586,10 +579,10 @@ class ImageBuilder:
             partition_instructions
         )
         for partition_instr in ordered_partitions:
-            self.editor.run_command_in_guest(
+            self.image_editor.run_command_in_guest(
                 f"mkdir -p /mnt/{partition_instr.mount}", allowfail=True
             )
-            self.editor.run_command_in_guest(
+            self.image_editor.run_command_in_guest(
                 f"mount /dev/sda{partition_instr.number} /mnt/{partition_instr.mount}"
             )
 
@@ -610,7 +603,7 @@ class ImageBuilder:
         try:
             return GuestChrootCommand(
                 single_cmd,
-                self.editor.ssh_config,
+                self.image_editor.ssh_config,
                 self.config.ssh_timeout,
                 capture_stdout=capture_stdout,
                 capture_stderr=capture_stderr,
@@ -623,10 +616,12 @@ class ImageBuilder:
     def build(self) -> str:
         new_image = self.__prepare_new_image()
 
-        self.editor = editor.ImageEditor(self.config, new_image, self.__is_from_scratch())
+        self.image_editor = editor.ImageEditor(
+            self.config, new_image, self.__is_from_scratch()
+        )
 
         # Start the image editor
-        self.editor.edit()
+        self.image_editor.edit()
 
         # Mount the partitions to the expected locations, but don't do any other
         # mounts in the chroot (/dev, /tmp, etc) because if this is a FROM scratch
@@ -658,7 +653,7 @@ class ImageBuilder:
             for cmd in instr.commands(self):
                 cmd.run()
 
-        self.editor.close()
+        self.image_editor.close()
 
         # Everything is done. Move the built image to its destination
         if self.config.local is True:

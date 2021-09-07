@@ -6,10 +6,8 @@ from . import utils
 from . import scan
 from . import ssh
 from . import sshfs
-from . import static
 
 import base64
-import contextlib
 import enum
 import json
 import logging
@@ -20,15 +18,11 @@ import tempfile
 import uuid
 
 from typing import (
-    cast,
-    Iterator,
     Optional,
     Sequence,
     List,
     Dict,
     Any,
-    Union,
-    Tuple,
     TYPE_CHECKING,
 )
 

@@ -1,15 +1,10 @@
 import collections
 import logging
-import fcntl
 import os
 import json
-import re
-import select
 import signal
 import socket
 import subprocess
-import sys
-import tempfile
 import threading
 import time
 

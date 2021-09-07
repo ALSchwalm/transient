@@ -9,7 +9,6 @@ import os
 import pathlib
 import progressbar  # type: ignore
 import select
-import socket
 import stat
 import subprocess
 import time
@@ -25,7 +24,6 @@ except ImportError:
     import importlib_resources as pkg_resources  # type: ignore
 
 from typing import (
-    cast,
     Optional,
     ContextManager,
     List,
