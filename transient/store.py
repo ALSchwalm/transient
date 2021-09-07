@@ -585,6 +585,7 @@ class VmStore:
                 "create",
                 "-f",
                 "qcow2",
+                "-F" "qcow2",
                 "-o",
                 f"backing_file={backing_image.path}",
                 new_image_path,
