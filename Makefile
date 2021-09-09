@@ -2,7 +2,6 @@ TRANSIENT_KERNEL=transient/static/transient-kernel
 TRANSIENT_INITRAMFS=transient/static/transient-initramfs
 TRANSIENT_BUILDROOT_CONFIG=kernel/buildroot-config
 TRANSIENT_KCONFIG=kernel/kernel-config
-COMPREHENSIVE_EXAMPLE=docs/configuration-file/comprehensive-example.md
 MAX_LINE_LENGTH?=100
 
 UNITTEST_DIRS=test/unit
@@ -42,7 +41,7 @@ venv/.dev-finished:
 	@echo "Finished building dev environment. Run '. venv/bin/activate'"
 
 .PHONY: prep-release
-prep-release: | clean dev $(COMPREHENSIVE_EXAMPLE)
+prep-release: | clean dev
 	. venv/bin/activate; \
 	    python setup.py sdist bdist_wheel; \
 	    twine check dist/*
