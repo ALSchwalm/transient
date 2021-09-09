@@ -12,6 +12,7 @@ from typing import (
 )
 
 from . import ssh
+from . import utils
 
 _PID_ROOT = "/proc"
 SCAN_DATA_FD = "__TRANSIENT_DATA_FD"
@@ -107,7 +108,7 @@ def find_transient_instances(
                 continue
 
             if vmstore is not None and (
-                "vmstore" not in data or data["vmstore"] != vmstore
+                "vmstore" not in data or not utils.paths_equal(data["vmstore"], vmstore)
             ):
                 continue
             if name is not None and ("name" not in data or data["name"] != name):

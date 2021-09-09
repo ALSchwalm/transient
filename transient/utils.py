@@ -69,6 +69,10 @@ def format_bytes(size: float) -> str:
     return "{:.2f} {}".format(size, labels[n])
 
 
+def paths_equal(*paths: str) -> bool:
+    return all(os.path.realpath(p) == os.path.realpath(paths[0]) for p in paths)
+
+
 def generate_unix_socket_path() -> str:
     id = str(uuid.uuid4())
     return os.path.join(tempfile.gettempdir(), f"transient.{id}")
