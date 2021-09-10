@@ -97,6 +97,8 @@ def find_transient_instances(
             if SCAN_ENVIRON_SENTINEL not in environ:
                 continue
 
+            logging.debug("Found transient process with pid={}".format(proc))
+
             start_time = _read_pid_start_time(pid_dir)
 
             try:
@@ -105,15 +107,27 @@ def find_transient_instances(
                 # A decode error will happen if the entry is scanned between the
                 # time the transient instances starts and the data fd is filled
                 # with the actual data. Ignore the entry in this case.
+                logging.debug("Skipping process because data was not valid JSON")
                 continue
 
             if vmstore is not None and (
                 "vmstore" not in data or not utils.paths_equal(data["vmstore"], vmstore)
             ):
+                logging.debug(
+                    "Skipping process because it is not in the expected VM store ('{}' != '{}')".format(
+                        data["vmstore"], vmstore
+                    )
+                )
                 continue
             if name is not None and ("name" not in data or data["name"] != name):
+                logging.debug(
+                    "Skipping process because it is does not have the expected name ('{}' != '{}')".format(
+                        data["name"], name
+                    )
+                )
                 continue
             if with_ssh is True and "ssh_port" not in data:
+                logging.debug("Skipping process because it does not have an SSH port")
                 continue
             instances.append(TransientInstance(int(proc), start_time, data))
         if timeout is None or len(instances) > 0:
