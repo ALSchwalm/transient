@@ -48,6 +48,7 @@ jobs:
         feature:
           - cli
           - commit
+          - cp
           - create
           - build
           - config_file
