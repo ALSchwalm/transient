@@ -128,6 +128,16 @@ def step_impl(context):
     }
 
 
+@given("a transient cp command")
+def step_impl(context):
+    context.vm_config = {
+        "command": ["cp"],
+        "transient-early-args": [],
+        "transient-args": [],
+        "qemu-args": [],
+    }
+
+
 @given("a transient commit command")
 def step_impl(context):
     context.vm_config = {
@@ -265,6 +275,7 @@ def step_impl(context, mount):
 
 
 @given('a transient flag "{flag}"')
+@given('an argument "{flag}"')
 def step_impl(context, flag):
     context.vm_config["transient-args"].append(flag)
 

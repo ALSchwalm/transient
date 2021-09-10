@@ -116,7 +116,12 @@ class TransientVm:
             f"Copying from '{host_path}' to '{self.primary_image.backend.identifier}:{vm_absolute_path}'"
         )
 
-        with editor.ImageEditor(self.config, self.primary_image.path) as edit:
+        with editor.ImageEditor(
+            self.primary_image.path,
+            self.config.ssh_timeout,
+            self.config.qmp_timeout,
+            self.config.rsync,
+        ) as edit:
             edit.copy_in(host_path, vm_absolute_path)
 
     def __needs_to_copy_out_files_after_running(self) -> bool:
@@ -153,7 +158,12 @@ class TransientVm:
             f"Copying from '{self.primary_image.backend.identifier}:{vm_absolute_path}' to '{host_path}'"
         )
 
-        with editor.ImageEditor(self.config, self.primary_image.path) as edit:
+        with editor.ImageEditor(
+            self.primary_image.path,
+            self.config.ssh_timeout,
+            self.config.qmp_timeout,
+            self.config.rsync,
+        ) as edit:
             edit.copy_out(vm_absolute_path, host_path)
 
     def __qemu_added_args(self) -> List[str]:

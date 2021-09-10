@@ -1,5 +1,6 @@
 import argparse
 
+from . import ssh
 from . import utils
 from . import qemu
 from . import __version__
@@ -16,6 +17,9 @@ class TransientArgumentDefaultsHelpFormatter(argparse.HelpFormatter):
                 if action.option_strings or action.nargs in defaulting_nargs:
                     help += " [default: %(default)s]"
         return help
+
+    def _fill_text(self, text: str, _width: Any, indent: str) -> str:
+        return "".join(indent + line for line in text.splitlines(keepends=True))
 
 
 def define_common_parser(include_defaults: bool) -> Tuple[argparse.ArgumentParser, ...]:
@@ -61,7 +65,7 @@ def define_common_parser(include_defaults: bool) -> Tuple[argparse.ArgumentParse
     common_ssh_parser.add_argument(
         "--ssh-timeout",
         type=int,
-        default=set_default(90),
+        default=set_default(ssh.SSH_DEFAULT_TOTAL_TIMEOUT),
         help="Time to wait for SSH connection before failing",
     )
     common_ssh_parser.add_argument(
@@ -387,7 +391,7 @@ IMAGE_BUILD_PARSER.add_argument(
 IMAGE_BUILD_PARSER.add_argument(
     "--ssh-timeout",
     type=int,
-    default=90,
+    default=ssh.SSH_DEFAULT_TOTAL_TIMEOUT,
     help="Time to wait for SSH connection before failing",
 )
 IMAGE_BUILD_PARSER.add_argument(
@@ -411,4 +415,41 @@ IMAGE_RM_PARSER.add_argument(
     help="Force removal even if image is required by a VM",
     action="store_const",
     const=True,
+)
+
+# Define 'cp' subcommand
+CP_PARSER = _SUBPARSERS.add_parser(
+    "cp",
+    parents=[_COMMON_PARSER],
+    description="""
+Copy files to/from an offline VM. The VM name must be specified
+before the path portion of either the destination or source. For
+example:
+
+    transient cp MY_VM_NAME:/etc/fstab /local/path/fstab
+
+This command would copy the 'fstab' file from MY_VM_NAME to the
+given local path. A similar command can be used to copy (multiple)
+files from the host machine to the VM disk:
+
+    transient cp file1 file2 MY_VM_NAME:/tmp
+
+""",
+    formatter_class=TransientArgumentDefaultsHelpFormatter,
+)
+CP_PARSER.add_argument("path", nargs="+", help="The path to copy to/from")
+CP_PARSER.add_argument(
+    "--qmp-timeout", type=int, default=qemu.QMP_DEFAULT_TIMEOUT, help=argparse.SUPPRESS
+)
+CP_PARSER.add_argument(
+    "--ssh-timeout",
+    type=int,
+    default=ssh.SSH_DEFAULT_TOTAL_TIMEOUT,
+    help=argparse.SUPPRESS,
+)
+CP_PARSER.add_argument(
+    "--rsync",
+    action="store_const",
+    const=True,
+    help="Use rsync for copy operations (instead of SCP)",
 )

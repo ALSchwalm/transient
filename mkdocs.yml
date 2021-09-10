@@ -7,6 +7,7 @@ nav:
     - Command Line Interface:
       - 'create/run/start/stop': cli/run_create_start_stop.md
       - 'image': cli/image.md
+      - 'cp': cli/cp.md
       - 'ps': cli/ps.md
       - 'rm': cli/rm.md
       - 'ssh': cli/ssh.md

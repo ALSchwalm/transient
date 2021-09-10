@@ -9,6 +9,7 @@ import uuid
 from . import args
 from . import configuration
 from . import build
+from . import editor
 from . import store
 from . import scan
 from . import ssh
@@ -34,6 +35,7 @@ _DEFAULT_TIMEOUT = 2.5
 _TERMINATE_CHECK_TIMEOUT = _DEFAULT_TIMEOUT
 _COMMIT_CHECK_TIMEOUT = _DEFAULT_TIMEOUT
 _START_CHECK_TIMEOUT = _DEFAULT_TIMEOUT
+_CP_CHECK_TIMEOUT = _DEFAULT_TIMEOUT
 _RM_CHECK_TIMEOUT = 1.0
 
 
@@ -234,6 +236,48 @@ def commit_impl(args: argparse.Namespace) -> None:
         imgstore.commit_vmstate(state, args.name)
 
 
+def cp_impl(args: argparse.Namespace) -> None:
+    imgstore = store.BackendImageStore(path=args.image_backend)
+    vmstore = store.VmStore(backend=imgstore, path=args.vmstore)
+
+    if len(args.path) < 2:
+        raise utils.TransientError(msg="Missing destination argument")
+    elif ":" not in args.path[-1] and not all(":" in p for p in args.path[:-1]):
+        raise utils.TransientError(
+            msg="If destination is not a VM path, all source paths must be VM paths"
+        )
+    elif ":" in args.path[-1] and any(":" in p for p in args.path[:-1]):
+        raise utils.TransientError(
+            msg="If destination is a VM path, all source paths must not be VM paths"
+        )
+
+    copy_config = {}
+    if ":" in args.path[-1]:
+        vm_name, destination = args.path[-1].split(":")
+        copy_to_vm = True
+        copy_config[vm_name] = args.path[:-1]
+    else:
+        destination = args.path[-1]
+        copy_to_vm = False
+        for source in args.path[:-1]:
+            vm_name, path = source.split(":")
+            if vm_name not in copy_config:
+                copy_config[vm_name] = [path]
+            else:
+                copy_config[vm_name].append(path)
+
+    for vm_name, cfg in copy_config.items():
+        with vmstore.lock_vmstate_by_name(vm_name, timeout=_CP_CHECK_TIMEOUT) as state:
+            with editor.ImageEditor(
+                state.primary_image.path, args.ssh_timeout, args.qmp_timeout, args.rsync
+            ) as image_editor:
+                for source in cfg:
+                    if copy_to_vm is True:
+                        image_editor.copy_in(source, destination)
+                    else:
+                        image_editor.copy_out(source, destination)
+
+
 def image_ls_impl(args: argparse.Namespace) -> None:
     imgstore = store.BackendImageStore(path=args.image_backend)
 
@@ -300,6 +344,7 @@ def __dispatch_command(
         "stop": (stop_impl, False),
         "ps": (ps_impl, False),
         "commit": (commit_impl, False),
+        "cp": (cp_impl, False),
         "image": {
             "ls": (image_ls_impl, False),
             "build": (image_build_impl, False),

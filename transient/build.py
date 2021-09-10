@@ -617,7 +617,10 @@ class ImageBuilder:
         new_image = self.__prepare_new_image()
 
         self.image_editor = editor.ImageEditor(
-            self.config, new_image, self.__is_from_scratch()
+            new_image,
+            self.config.ssh_timeout,
+            self.config.qmp_timeout,
+            skip_mount=self.__is_from_scratch(),
         )
 
         # Start the image editor

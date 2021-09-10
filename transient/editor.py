@@ -97,20 +97,28 @@ class GuestCommand(Command):
             return stdout, stderr
 
 
-EditorConfig = Union[configuration.RunConfig, configuration.BuildConfig]
-
-
 class ImageEditor:
-    config: EditorConfig
     ssh_config: ssh.SshConfig
     path: str
     skip_mount: bool
     runner: qemu.QemuRunner
+    ssh_timeout: int
+    qmp_timeout: int
+    rsync: bool
 
-    def __init__(self, config: EditorConfig, path: str, skip_mount: bool = False) -> None:
-        self.config = config
+    def __init__(
+        self,
+        path: str,
+        ssh_timeout: int,
+        qmp_timeout: int,
+        rsync: bool = False,
+        skip_mount: bool = False,
+    ) -> None:
+        self.ssh_timeout = ssh_timeout
         self.path = path
         self.skip_mount = skip_mount
+        self.qmp_timeout = qmp_timeout
+        self.rsync = rsync
 
     def edit(self) -> "ImageEditor":
         self.runner = self._spawn_qemu(self.path)
@@ -247,7 +255,7 @@ class ImageEditor:
             # Block until the qmp connection completes so we know it is ok to
             # (potentially) delete the kernel/initramfs
             assert qemu_runner.qmp_client is not None
-            qemu_runner.qmp_client.connect(self.config.qmp_timeout)
+            qemu_runner.qmp_client.connect(self.qmp_timeout)
             return qemu_runner
 
     def run_command_in_guest(
@@ -265,7 +273,7 @@ class ImageEditor:
             return GuestCommand(
                 single_cmd,
                 self.ssh_config,
-                self.config.ssh_timeout,
+                self.ssh_timeout,
                 capture_stdout=capture_stdout,
                 capture_stderr=capture_stderr,
             ).run()
@@ -274,20 +282,14 @@ class ImageEditor:
                 raise
             return None, None
 
-    def __rsync_transfer(self) -> bool:
-        if "rsync" in self.config and self.config.rsync is not None:
-            assert isinstance(self.config.rsync, bool)
-            return self.config.rsync
-        return False
-
     def copy_in(self, host_path: str, guest_path: str) -> None:
-        transfer = ssh.rsync if self.__rsync_transfer() is True else ssh.scp
+        transfer = ssh.rsync if self.rsync is True else ssh.scp
         transfer(
             host_path, utils.join_absolute_paths("/mnt", guest_path), self.ssh_config
         )
 
     def copy_out(self, guest_path: str, host_path: str) -> None:
-        transfer = ssh.rsync if self.__rsync_transfer() is True else ssh.scp
+        transfer = ssh.rsync if self.rsync is True else ssh.scp
         transfer(
             utils.join_absolute_paths("/mnt", guest_path),
             host_path,
