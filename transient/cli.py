@@ -180,7 +180,7 @@ def ps_impl(args: argparse.Namespace) -> None:
     vmstore = store.VmStore(backend=backend, path=args.vmstore)
 
     # Arbitrary max width to avoid line breaks
-    table = beautifultable.BeautifulTable(max_width=1000)
+    table = beautifultable.BeautifulTable(maxwidth=1000)
     headers = ["NAME", "IMAGE", "STATUS"]
 
     if args.pid is True:
@@ -188,17 +188,17 @@ def ps_impl(args: argparse.Namespace) -> None:
     if args.ssh is True:
         headers.append("SSH")
 
-    table.column_headers = headers
+    table.columns.header = headers
 
     if args.pid is True:
-        table.column_alignments["PID"] = beautifultable.BeautifulTable.ALIGN_RIGHT
+        table.columns.alignment["PID"] = beautifultable.BeautifulTable.ALIGN_RIGHT
     if args.ssh is True:
-        table.column_alignments["SSH"] = beautifultable.BeautifulTable.ALIGN_RIGHT
+        table.columns.alignment["SSH"] = beautifultable.BeautifulTable.ALIGN_RIGHT
 
     table.set_style(beautifultable.BeautifulTable.STYLE_NONE)
-    table.column_alignments["NAME"] = beautifultable.BeautifulTable.ALIGN_LEFT
-    table.column_alignments["IMAGE"] = beautifultable.BeautifulTable.ALIGN_LEFT
-    table.column_alignments["STATUS"] = beautifultable.BeautifulTable.ALIGN_LEFT
+    table.columns.alignment["NAME"] = beautifultable.BeautifulTable.ALIGN_LEFT
+    table.columns.alignment["IMAGE"] = beautifultable.BeautifulTable.ALIGN_LEFT
+    table.columns.alignment["STATUS"] = beautifultable.BeautifulTable.ALIGN_LEFT
 
     running_instances = scan.find_transient_instances(vmstore=args.vmstore)
     for instance in running_instances:
@@ -212,7 +212,7 @@ def ps_impl(args: argparse.Namespace) -> None:
             row.append(str(instance.transient_pid))
         if args.ssh is True:
             row.append(str(instance.ssh_port is not None))
-        table.append_row(row)
+        table.rows.append(row)
 
     if args.all is True:
         for vm in vmstore.vmstates(lock_timeout=0):
@@ -223,7 +223,7 @@ def ps_impl(args: argparse.Namespace) -> None:
                 row.append("")
             if args.ssh is True:
                 row.append(str(configuration.config_requires_ssh(vm.config)))
-            table.append_row(row)
+            table.rows.append(row)
 
     print(table)
 
