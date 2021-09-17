@@ -1,10 +1,8 @@
-import argparse
 import beautifultable  # type: ignore
 import logging
 import os
 import signal
 import sys
-import uuid
 
 from . import args
 from . import configuration
@@ -15,21 +13,9 @@ from . import scan
 from . import ssh
 from . import transient
 from . import utils
-from . import qemu
 from . import __version__
 
-from typing import (
-    List,
-    Any,
-    Optional,
-    Union,
-    Callable,
-    cast,
-    TypeVar,
-    Dict,
-    Type,
-    Tuple,
-)
+from typing import List, Any
 
 _DEFAULT_TIMEOUT = 2.5
 _TERMINATE_CHECK_TIMEOUT = _DEFAULT_TIMEOUT
@@ -52,19 +38,19 @@ def set_log_level(verbose: int) -> None:
     )
 
 
-def create_impl(args: argparse.Namespace) -> None:
+def create_impl(args: args.TransientArgs) -> None:
     """Create (but do not run) a transient virtual machine"""
 
-    config = configuration.create_transient_create_config(vars(args))
+    config = configuration.create_transient_create_config(args)
     backend = store.BackendImageStore(path=config.image_backend)
     vmstore = store.VmStore(backend=backend, path=config.vmstore)
     name = vmstore.create_vmstate(config)
     print(f"Created VM '{name}'")
 
 
-def start_impl(args: argparse.Namespace) -> None:
+def start_impl(args: args.TransientArgs) -> None:
     """Start an existing virtual machine"""
-    config = configuration.create_transient_start_config(vars(args))
+    config = configuration.create_transient_start_config(args)
     backend = store.BackendImageStore(path=config.image_backend)
     vmstore = store.VmStore(backend=backend, path=config.vmstore)
 
@@ -75,9 +61,9 @@ def start_impl(args: argparse.Namespace) -> None:
     trans.run()
 
 
-def run_impl(args: argparse.Namespace) -> None:
+def run_impl(args: args.TransientArgs) -> None:
     """Run a transient virtual machine."""
-    config = configuration.create_transient_run_config(vars(args))
+    config = configuration.create_transient_run_config(args)
 
     backend = store.BackendImageStore(path=config.image_backend)
     vmstore = store.VmStore(backend=backend, path=config.vmstore)
@@ -86,7 +72,7 @@ def run_impl(args: argparse.Namespace) -> None:
     trans.run()
 
 
-def rm_impl(args: argparse.Namespace) -> None:
+def rm_impl(args: args.TransientArgs) -> None:
     backend = store.BackendImageStore(path=args.image_backend)
     vmstore = store.VmStore(backend=backend, path=args.vmstore)
 
@@ -130,7 +116,7 @@ def __terminate_vm(name: str, vmstore: store.VmStore, kill: bool, verify: bool) 
         return
 
 
-def stop_impl(args: argparse.Namespace) -> None:
+def stop_impl(args: args.TransientArgs) -> None:
     backend = store.BackendImageStore(path=args.image_backend)
     vmstore = store.VmStore(backend=backend, path=args.vmstore)
 
@@ -138,7 +124,7 @@ def stop_impl(args: argparse.Namespace) -> None:
         __terminate_vm(name, vmstore, args.kill is True, verify=False)
 
 
-def ssh_impl(args: argparse.Namespace) -> None:
+def ssh_impl(args: args.TransientArgs) -> None:
     """Connect to a running VM using SSH"""
 
     if args.wait:
@@ -175,7 +161,7 @@ def ssh_impl(args: argparse.Namespace) -> None:
     sys.exit(connection.wait())
 
 
-def ps_impl(args: argparse.Namespace) -> None:
+def ps_impl(args: args.TransientArgs) -> None:
     backend = store.BackendImageStore(path=args.image_backend)
     vmstore = store.VmStore(backend=backend, path=args.vmstore)
 
@@ -228,7 +214,7 @@ def ps_impl(args: argparse.Namespace) -> None:
     print(table)
 
 
-def commit_impl(args: argparse.Namespace) -> None:
+def commit_impl(args: args.TransientArgs) -> None:
     imgstore = store.BackendImageStore(path=args.image_backend)
     vmstore = store.VmStore(backend=imgstore, path=args.vmstore)
 
@@ -236,7 +222,7 @@ def commit_impl(args: argparse.Namespace) -> None:
         imgstore.commit_vmstate(state, args.name)
 
 
-def cp_impl(args: argparse.Namespace) -> None:
+def cp_impl(args: args.TransientArgs) -> None:
     imgstore = store.BackendImageStore(path=args.image_backend)
     vmstore = store.VmStore(backend=imgstore, path=args.vmstore)
 
@@ -278,7 +264,7 @@ def cp_impl(args: argparse.Namespace) -> None:
                         image_editor.copy_out(source, destination)
 
 
-def image_ls_impl(args: argparse.Namespace) -> None:
+def image_ls_impl(args: args.TransientArgs) -> None:
     imgstore = store.BackendImageStore(path=args.image_backend)
 
     table = beautifultable.BeautifulTable(max_width=1000)
@@ -300,14 +286,14 @@ def image_ls_impl(args: argparse.Namespace) -> None:
     print(table)
 
 
-def image_build_impl(args: argparse.Namespace) -> None:
-    config = configuration.create_transient_build_config(vars(args))
+def image_build_impl(args: args.TransientArgs) -> None:
+    config = configuration.create_transient_build_config(args)
     imgstore = store.BackendImageStore(path=config.image_backend)
     builder = build.ImageBuilder(config, imgstore)
     builder.build()
 
 
-def image_rm_impl(args: argparse.Namespace) -> None:
+def image_rm_impl(args: args.TransientArgs) -> None:
     imgstore = store.BackendImageStore(path=args.image_backend)
     vmstore = store.VmStore(backend=imgstore, path=args.vmstore)
 
@@ -333,7 +319,7 @@ def sigint_handler(sig: int, _frame: Any) -> None:
 
 
 def __dispatch_command(
-    parsed_arguments: argparse.Namespace, qemu_args: List[str]
+    parsed_arguments: args.TransientArgs, qemu_args: List[str]
 ) -> None:
     command_mappings = {
         "create": (create_impl, True),
@@ -361,7 +347,7 @@ def __dispatch_command(
     while True:
         name = getattr(parsed_arguments, field)
         value = mapping[name]
-        delattr(parsed_arguments, field)
+        parsed_arguments.remove_arg(field)
 
         if isinstance(value, tuple):
             callback, needs_qemu = value
@@ -373,7 +359,7 @@ def __dispatch_command(
     if needs_qemu is True:
         # The 'hidden' field should never contain actual values, replace them
         # with what we parsed ourselves
-        setattr(parsed_arguments, "qemu_args", qemu_args)
+        parsed_arguments.add_arg("qemu_args", qemu_args)
 
     callback(parsed_arguments)
 
@@ -391,12 +377,12 @@ def main() -> None:
         qemu_args = sys.argv[arg_split_idx + 1 :]
 
     # Now parse the provided args and call the appropriate callback
-    parsed = args.ROOT_PARSER.parse_args(transient_args)
+    parsed = args.TransientArgs(transient_args)
 
     set_log_level(parsed.verbose)
 
     # Verbosity is not used after setting the log level, remove it.
-    delattr(parsed, "verbose")
+    parsed.remove_arg("verbose")
 
     try:
         __dispatch_command(parsed, qemu_args)

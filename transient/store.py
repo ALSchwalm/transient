@@ -629,7 +629,7 @@ class VmStore:
         # This may throw at any point, as we don't hold the lock, so
         # supress errors and return None
         try:
-            config = configuration.load_config_file(cfg_path)
+            config = configuration.load_create_config(cfg_path)
 
             images = []
             for filename in os.listdir(dir):

@@ -59,6 +59,7 @@ class ConfigFileOptionError(Exception):
         msg = f"Invalid configuration file '{self.path}'"
         for invalid_option, errors in self.inner.normalized_messages().items():  # type: ignore
             # Revert the option to its preformatted state
+            invalid_option = invalid_option.replace("_", "-")
             line_number = self._line_number_of_option_in_config_file(invalid_option)
 
             formatted_errors = " ".join(errors)
@@ -127,7 +128,7 @@ def schema_from_argument_parser(parser: argparse.ArgumentParser) -> Type[Schema]
 
 
 CreateSchema = schema_from_argument_parser(args.CREATE_PARSER)
-StartSchema = schema_from_argument_parser(args.START_PARSER)
+StartSchema = schema_from_argument_parser(args.START_PARSER_NO_DEFAULTS)
 RunSchema = schema_from_argument_parser(args.RUN_PARSER)
 ImageBuildSchema = schema_from_argument_parser(args.IMAGE_BUILD_PARSER)
 
@@ -163,40 +164,66 @@ StartConfig = NewType("StartConfig", _Config)
 BuildConfig = NewType("BuildConfig", _Config)
 
 
-def load_config_file(path: str) -> CreateConfig:
-    """Parses the given config file and returns the contents as a dictionary
-    """
+def load_create_config(path: str, set_defaults: bool = True) -> CreateConfig:
+    return CreateConfig(__load_config_file(path, CreateSchema(), set_defaults))
+
+
+def __load_config_file(path: str, schema: Schema, set_defaults: bool) -> _Config:
     contents = open(path, "r").read()
 
     try:
         parsed_config_file = toml.loads(contents)
+
+        # Allow the user to write option names in the same form as the commandline
+        parsed_config_file = {
+            name.replace("-", "_"): value for name, value in parsed_config_file.items()
+        }
     except toml.TomlDecodeError as error:
         raise ConfigFileParsingError(error, path)
 
     try:
-        create_config = CreateConfig(
-            _Config(schema=CreateSchema(), data=parsed_config_file,)
-        )
+        if set_defaults is True:
+            partial = None
+        else:
+            partial = schema.fields.keys()
+        config = _Config(schema=schema, data=parsed_config_file, partial=partial)
     except ValidationError as error:
         raise ConfigFileOptionError(error, path)
 
-    return create_config
+    return config
 
 
-def create_transient_run_config(cli_args: Dict[Any, Any]) -> RunConfig:
-    return RunConfig(_Config(schema=RunSchema(), data=cli_args))
+def __create_transient_config(cli_args: args.TransientArgs, schema: Schema) -> _Config:
+
+    if hasattr(cli_args, "config") and cli_args.config is not None:
+        config = dict(__load_config_file(cli_args.config, schema, True))
+
+        for field, value in cli_args.user_supplied_fields():
+            if value is not None:
+                if isinstance(config[field], list):
+                    config[field].extend(value)
+                else:
+                    config[field] = value
+
+        return _Config(schema=schema, data=config)
+    else:
+        return _Config(schema=schema, data=dict(cli_args))
 
 
-def create_transient_start_config(cli_args: Dict[Any, Any]) -> StartConfig:
-    return StartConfig(_Config(schema=StartSchema(), data=cli_args))
+def create_transient_run_config(cli_args: args.TransientArgs) -> RunConfig:
+    return RunConfig(__create_transient_config(cli_args, RunSchema()))
 
 
-def create_transient_create_config(cli_args: Dict[Any, Any]) -> CreateConfig:
-    return CreateConfig(_Config(schema=CreateSchema(), data=cli_args))
+def create_transient_start_config(cli_args: args.TransientArgs) -> StartConfig:
+    return StartConfig(__create_transient_config(cli_args, StartSchema()))
 
 
-def create_transient_build_config(cli_args: Dict[Any, Any]) -> BuildConfig:
-    return BuildConfig(_Config(schema=ImageBuildSchema(), data=cli_args))
+def create_transient_create_config(cli_args: args.TransientArgs) -> CreateConfig:
+    return CreateConfig(__create_transient_config(cli_args, CreateSchema()))
+
+
+def create_transient_build_config(cli_args: args.TransientArgs) -> BuildConfig:
+    return BuildConfig(_Config(schema=ImageBuildSchema(), data=dict(cli_args)))
 
 
 def run_config_from_create_and_start(
