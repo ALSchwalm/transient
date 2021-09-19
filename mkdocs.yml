@@ -18,3 +18,4 @@ nav:
       - 'Imagefile Format': images/format.md
     - Feature Details:
       - 'Using Shared Folders': details/shared-folders.md
+      - 'Config File Format': details/config-file.md

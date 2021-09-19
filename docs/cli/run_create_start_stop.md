@@ -91,6 +91,7 @@ ones common to both subcommands are described below:
                                be established [default: 10]
 - `--shared-folder SHARED_FOLDER`: Share a host directory with the guest
                                    (/path/on/host:/path/on/guest)
+- `--config CONFIG`: Path to a config toml file to read parameters from. (see [Config Format](../details/config-file.md) for details)
 - `--copy-in-before COPY_IN_BEFORE`: Copy a file or directory into the VM before running
                                      (path/on/host:/absolute/path/on/guest)
 - `--copy-out-after COPY_OUT_AFTER`: Copy a file or directory out of the VM after running
