@@ -5,7 +5,7 @@ from . import utils
 from . import qemu
 from . import __version__
 
-from typing import Any, Tuple, Optional, List, Iterator
+from typing import Any, Tuple, Optional, List, Iterator, Dict, Callable
 
 
 class TransientArgumentDefaultsHelpFormatter(argparse.HelpFormatter):
@@ -211,7 +211,7 @@ def define_parsers(include_defaults: bool) -> Tuple[argparse.ArgumentParser, ...
         help="Create (but do not start) a new VM",
         formatter_class=TransientArgumentDefaultsHelpFormatter,
     )
-    create_parser.add_argument("primary_image", help="Disk image to boot", type=str)
+    create_parser.add_argument("image", help="Disk image to boot", type=str)
     create_parser.add_argument("--name", help="Virtual machine name", type=str)
     create_parser.add_argument("--qemu_args", help=argparse.SUPPRESS, nargs="*", type=str)
 
@@ -222,7 +222,7 @@ def define_parsers(include_defaults: bool) -> Tuple[argparse.ArgumentParser, ...
         help="Create and run a VM",
         formatter_class=TransientArgumentDefaultsHelpFormatter,
     )
-    run_parser.add_argument("primary_image", help="Disk image to boot", type=str)
+    run_parser.add_argument("image", help="Disk image to boot", type=str)
     run_parser.add_argument("--name", help="Virtual machine name", type=str)
     run_parser.add_argument("--qemu_args", help=argparse.SUPPRESS, nargs="*", type=str)
 
@@ -451,23 +451,64 @@ def define_parsers(include_defaults: bool) -> Tuple[argparse.ArgumentParser, ...
 
 
 class TransientArgs:
-    cli_args: List[str]
+    transient_args: List[str]
+    qemu_args: List[str]
     parsed: argparse.Namespace
     user_supplied: argparse.Namespace
+    callback: Any
+    verbosity: int
 
-    def __init__(self, cli_args: List[str]) -> None:
-        self.cli_args = cli_args
-        self.parsed = ROOT_PARSER.parse_args(self.cli_args)
-        self.user_supplied = ROOT_PARSER_NO_DEFAULTS.parse_args(self.cli_args)
+    def __init__(
+        self,
+        transient_args: List[str],
+        qemu_args: List[str],
+        command_mappings: Dict[Any, Any],
+    ) -> None:
+
+        self.transient_args = transient_args
+        self.qemu_args = qemu_args
+        self.parsed = ROOT_PARSER.parse_args(self.transient_args)
+        self.user_supplied = ROOT_PARSER_NO_DEFAULTS.parse_args(self.transient_args)
+        self.verbosity = self.parsed.verbose
+
+        self.__remove_arg("verbose")
+
+        # Starting with a field named 'root_command', recursively look through the
+        # command_mappings object to find the appropriate callback. This is required
+        # because some subcommands have the same name as sub-subcommands (e.g., 'rm'
+        # and 'image rm'.)
+        callback = None
+        mapping: Any = command_mappings
+        field = "root_command"
+        while True:
+            name = getattr(self.parsed, field)
+            value = mapping[name]
+            self.__remove_arg(field)
+
+            if isinstance(value, tuple):
+                callback, needs_qemu = value
+                break
+            else:
+                mapping = value
+                field = name + "_command"
+
+        if needs_qemu is True:
+            # The 'hidden' field should never contain actual values, replace them
+            # with what we parsed ourselves
+            self.__add_arg("qemu_args", qemu_args)
+
+        if callback is None:
+            raise utils.TransientError(msg="Unable to locate command callback")
+        self.callback = callback
 
     def __getattr__(self, name: str) -> Any:
         return getattr(self.parsed, name)
 
-    def remove_arg(self, name: str) -> None:
+    def __remove_arg(self, name: str) -> None:
         delattr(self.parsed, name)
         delattr(self.user_supplied, name)
 
-    def add_arg(self, name: str, value: Any) -> None:
+    def __add_arg(self, name: str, value: Any) -> None:
         setattr(self.parsed, name, value)
         setattr(self.user_supplied, name, value)
 

@@ -449,7 +449,7 @@ class VmPersistentState:
 
     def __find_primary_image(self, images: List[FrontendImageInfo]) -> FrontendImageInfo:
         for image in self.images:
-            if image.backend_image_name == ImageSpec(self.config.primary_image).name:
+            if image.backend_image_name == ImageSpec(self.config.image).name:
                 return image
         raise utils.TransientError(msg=f"Unable to find primary image for '{self.name}'")
 
@@ -493,7 +493,7 @@ class VmStore:
             logging.debug(f"Using {tempdir} as temporary state directory")
 
             logging.debug(f"Creating VM disk images")
-            images = [self.__create_vm_image(config.primary_image, name, 0, tempdir)]
+            images = [self.__create_vm_image(config.image, name, 0, tempdir)]
             images.extend(
                 [
                     self.__create_vm_image(img, name, i + 1, tempdir)

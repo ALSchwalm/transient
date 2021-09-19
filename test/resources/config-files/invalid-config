@@ -1,0 +1,2 @@
+ssh-foobar = true
+qemu-args = []

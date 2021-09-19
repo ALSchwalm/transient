@@ -343,8 +343,8 @@ def step_impl(context, flag):
 
 @given('the config file "{config_file}"')
 def step_impl(context, config_file):
-    config_file_path = os.path.join("config-files/", config_file)
-    context.vm_config["transient-args"].extend(["-config", config_file_path])
+    config_file_path = os.path.join("resources/config-files/", config_file)
+    context.vm_config["transient-args"].extend(["--config", config_file_path])
 
 
 @when("the vm runs to completion")

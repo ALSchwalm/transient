@@ -300,7 +300,7 @@ class TransientVm:
         data = {
             "name": self.name,
             "vmstore": self.vmstore.path,
-            "primary_image": store.ImageSpec(self.config.primary_image).name,
+            "primary_image": store.ImageSpec(self.config.image).name,
             "stateless": self.__is_stateless(),
             "transient_pid": os.getpid(),
         }
@@ -352,7 +352,7 @@ class TransientVm:
             # own frontend images, because we will be using the '-snapshot'
             # feature to effectively do that. So just ensure the backend
             # images have been downloaded.
-            self.primary_image = self.__use_backend_images([self.config.primary_image])[0]
+            self.primary_image = self.__use_backend_images([self.config.image])[0]
             self.vm_images = [self.primary_image] + self.__use_backend_images(
                 self.config.extra_image
             )

@@ -318,50 +318,29 @@ def sigint_handler(sig: int, _frame: Any) -> None:
     sys.exit(1)
 
 
-def __dispatch_command(
-    parsed_arguments: args.TransientArgs, qemu_args: List[str]
-) -> None:
-    command_mappings = {
-        "create": (create_impl, True),
-        "run": (run_impl, True),
-        "rm": (rm_impl, False),
-        "ssh": (ssh_impl, False),
-        "start": (start_impl, True),
-        "stop": (stop_impl, False),
-        "ps": (ps_impl, False),
-        "commit": (commit_impl, False),
-        "cp": (cp_impl, False),
-        "image": {
-            "ls": (image_ls_impl, False),
-            "build": (image_build_impl, False),
-            "rm": (image_rm_impl, False),
-        },
-    }
+CLI_COMMAND_MAPPINGS = {
+    "create": (create_impl, True),
+    "run": (run_impl, True),
+    "rm": (rm_impl, False),
+    "ssh": (ssh_impl, False),
+    "start": (start_impl, True),
+    "stop": (stop_impl, False),
+    "ps": (ps_impl, False),
+    "commit": (commit_impl, False),
+    "cp": (cp_impl, False),
+    "image": {
+        "ls": (image_ls_impl, False),
+        "build": (image_build_impl, False),
+        "rm": (image_rm_impl, False),
+    },
+}
 
-    # Starting with a field named 'root_command', recursively look through the
-    # command_mappings object to find the appropriate callback. This is required
-    # because some subcommands have the same name as sub-subcommands (e.g., 'rm'
-    # and 'image rm'.)
-    mapping: Any = command_mappings
-    field = "root_command"
-    while True:
-        name = getattr(parsed_arguments, field)
-        value = mapping[name]
-        parsed_arguments.remove_arg(field)
 
-        if isinstance(value, tuple):
-            callback, needs_qemu = value
-            break
-        else:
-            mapping = value
-            field = name + "_command"
+def __dispatch_command(transient_args: List[str], qemu_args: List[str]) -> None:
 
-    if needs_qemu is True:
-        # The 'hidden' field should never contain actual values, replace them
-        # with what we parsed ourselves
-        parsed_arguments.add_arg("qemu_args", qemu_args)
-
-    callback(parsed_arguments)
+    parsed_arguments = args.TransientArgs(transient_args, qemu_args, CLI_COMMAND_MAPPINGS)
+    set_log_level(parsed_arguments.verbosity)
+    parsed_arguments.callback(parsed_arguments)
 
 
 def main() -> None:
@@ -376,16 +355,8 @@ def main() -> None:
         transient_args = sys.argv[1:arg_split_idx]
         qemu_args = sys.argv[arg_split_idx + 1 :]
 
-    # Now parse the provided args and call the appropriate callback
-    parsed = args.TransientArgs(transient_args)
-
-    set_log_level(parsed.verbose)
-
-    # Verbosity is not used after setting the log level, remove it.
-    parsed.remove_arg("verbose")
-
     try:
-        __dispatch_command(parsed, qemu_args)
+        __dispatch_command(transient_args, qemu_args)
     except (
         configuration.ConfigFileOptionError,
         configuration.ConfigFileParsingError,

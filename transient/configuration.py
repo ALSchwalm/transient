@@ -155,6 +155,8 @@ class _Config(Dict[str, Any]):
         setattr(self, "__setattr__", None)
 
     def __getattr__(self, attr: Any) -> Any:
+        if attr not in self:
+            raise AttributeError
         return self[attr]
 
 
@@ -204,6 +206,9 @@ def __create_transient_config(cli_args: args.TransientArgs, schema: Schema) -> _
                     config[field].extend(value)
                 else:
                     config[field] = value
+
+        # Clear the config field as we're combining them here
+        config["config"] = None
 
         return _Config(schema=schema, data=config)
     else:
