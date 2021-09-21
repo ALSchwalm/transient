@@ -68,9 +68,27 @@ class BaseImageProtocol:
 
             self._do_retrieve_image(store, spec, temp_file)
 
-            # Now that the entire file is retrieved, atomically move it to the destination.
-            # This avoids issues where a process was killed in the middle of retrieval
-            os.rename(temp_destination, destination)
+            logging.info("Converting new image to qcow2")
+
+            # Do a convert to ensure that any image we're getting from any protocol
+            # is a qcow2 once we put it in the backend.
+            convert_path = os.path.join(store.working, str(uuid.uuid4()))
+            utils.run_check_retcode(
+                [
+                    store.qemu_img_bin,
+                    "convert",
+                    "-O",
+                    "qcow2",
+                    temp_destination,
+                    convert_path,
+                ]
+            )
+
+            # Now that the entire file is retrieved and converted, atomically move it
+            # to the destination and clean up the intermediate. This avoids issues where
+            # a process was killed in the middle of retrieval
+            os.rename(convert_path, destination)
+            os.remove(temp_destination)
 
             # There is a qemu hotkey to commit a 'snapshot' to the backing file.
             # Making the backend images read-only prevents this.
@@ -409,7 +427,8 @@ class BackendImageStore:
                     self.qemu_img_bin,
                     "convert",
                     primary_image.path,
-                    "-O" "qcow2",
+                    "-O",
+                    "qcow2",
                     "-p",
                     working,
                 ],
@@ -564,7 +583,8 @@ class VmStore:
                 "create",
                 "-f",
                 "qcow2",
-                "-F" "qcow2",
+                "-F",
+                "qcow2",
                 "-o",
                 f"backing_file={backing_image.path}",
                 new_image_path,

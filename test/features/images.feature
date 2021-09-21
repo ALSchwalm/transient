@@ -18,6 +18,16 @@ Feature: Image Support
      Then the return code is 0
       And stdout contains "passed"
 
+  Scenario: Download an image with the raw format
+    Given a transient run command
+      And a disk image "test_http_file_raw,http=https://github.com/ALSchwalm/transient-baseimages/releases/download/7/alpine-3.13.raw.xz"
+      And a backend "./artifacts/test-backend"
+      And a name "http_test_vm"
+      And a ssh command "echo passed"
+     When the vm runs to completion
+     Then the return code is 0
+      And stdout contains "passed"
+
   Scenario: Set a custom vmstore
     Given a transient create command
       And a name "image-test-vm"
