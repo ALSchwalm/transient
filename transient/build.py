@@ -489,7 +489,9 @@ class ImageBuilder:
             working = os.path.join(self.imgstore.working, name)
 
         if not self.__is_from_scratch():
-            existing = self.imgstore.retrieve_image(self.from_instruction.source).path
+            existing = self.imgstore.retrieve_image(
+                store.ImageSpec(self.from_instruction.source)
+            ).path
             logging.info(f"Copying backend file as base of new image at '{working}'")
             with open(existing, "rb") as source, open(working, "wb") as dest:
                 # Get the size of the source for the progress bar

@@ -28,7 +28,7 @@ def test_storage_safe_decode(test_input, expected):
 
 def test_image_spec_unknown():
     with pytest.raises(
-        transient.utils.TransientError, match="Unknown image source protocol.*"
+        transient.utils.TransientError, match="spell the protocol correctly"
     ):
         s.ImageSpec("name,unknownspec=foobar")
 
@@ -44,17 +44,23 @@ def test_image_spec_implicit_vagrant():
 
 
 def test_image_spec_vagrant():
-    spec = s.ImageSpec("noproto,vagrant=centos/7:2004.01")
+    spec = s.ImageSpec("myimg,vagrant=centos/7:2004.01")
     assert isinstance(spec.source_proto, s.VagrantImageProtocol)
 
 
 def test_image_spec_http():
     spec = s.ImageSpec(
-        "noproto,http=https://github.com/ALSchwalm/transient-baseimages/releases/download/5/alpine-3.13.qcow2.xz"
+        "myimg,http=https://github.com/ALSchwalm/transient-baseimages/releases/download/5/alpine-3.13.qcow2.xz"
     )
     assert isinstance(spec.source_proto, s.HttpImageProtocol)
 
 
 def test_image_spec_file():
-    spec = s.ImageSpec("noproto,file=/path/to/file")
+    spec = s.ImageSpec("myimg,file=/path/to/file")
     assert isinstance(spec.source_proto, s.FileImageProtocol)
+
+
+def test_image_spec_file_with_options():
+    spec = s.ImageSpec("myimg,file=/path/to/file,format=raw")
+    assert isinstance(spec.source_proto, s.FileImageProtocol)
+    assert spec.options == {"format": "raw"}

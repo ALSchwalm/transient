@@ -239,7 +239,7 @@ class HttpImageProtocol(BaseImageProtocol):
         logging.info("Download complete.")
 
 
-_IMAGE_SPEC = re.compile(r"^([^,]+?)(?:,(.+?)=(.+))?$")
+_IMAGE_SPEC = re.compile(r"^([^,]+?)(?:,(.+?)=([^,]+?))*$")
 _IMAGE_PROTOCOLS = [
     VagrantImageProtocol(),
     HttpImageProtocol(),
@@ -251,24 +251,56 @@ class ImageSpec:
     name: str
     source_proto: BaseImageProtocol
     source: str
+    options: Dict[str, str]
 
     def __init__(self, spec: str) -> None:
+        self.options = {}
+
         parsed = _IMAGE_SPEC.match(spec)
         if parsed is None:
             raise utils.TransientError(f"Invalid image spec '{spec}'")
-        self.name, proto, self.source = parsed.groups()
+
+        self.name, *parts = spec.split(",")
+
+        source_proto = None
+        source_value = None
+        for part in parts:
+            field, value = part.split("=", 1)
+            if value is None:
+                raise utils.TransientError(f"Missing value after '=' in '{spec}'")
+
+            for protocol in _IMAGE_PROTOCOLS:
+                if protocol.matches(field):
+                    source_proto = protocol
+                    source_value = value
+                    break
+            else:
+                self.options[field] = value
 
         # If no protocol is specified, use vagrant
-        if proto is None:
+        if source_proto is None:
+
+            # If a user has not specified a protocol, but has specified options,
+            # they've almost certainly accidentally misspelled the intended protocol.
+            # For example myimg,htp=http://foo.bar would parse as an option 'htp'. This
+            # check makes that an error.
+            if len(self.options) > 0:
+                raise utils.TransientError(
+                    "Protocol options are not allowed wtih an implicit protocol. "
+                    + "Did you spell the protocol correctly?"
+                )
+
             self.source_proto = VagrantImageProtocol()
             self.source = self.name
             return
+        else:
+            assert source_value is not None
 
-        for protocol in _IMAGE_PROTOCOLS:
-            if protocol.matches(proto):
-                self.source_proto = protocol
-                return
-        raise utils.TransientError(f"Unknown image source protocol '{proto}'")
+            self.source_proto = source_proto
+            self.source = source_value
+            return
+
+        raise utils.TransientError(f"No valid image protocol in '{spec}'")
 
 
 class BaseImageInfo:
@@ -365,8 +397,7 @@ class BackendImageStore:
         safe_name = storage_safe_encode(spec.name)
         return os.path.join(self.backend, safe_name)
 
-    def retrieve_image(self, image_spec: str) -> BackendImageInfo:
-        spec = ImageSpec(image_spec)
+    def retrieve_image(self, spec: ImageSpec) -> BackendImageInfo:
         destination = self.backend_path(spec)
 
         if os.path.exists(destination):
@@ -562,7 +593,8 @@ class VmStore:
     def __create_vm_image(
         self, image_spec: str, vm_name: str, num: int, dir_path: str
     ) -> FrontendImageInfo:
-        backing_image = self.backend.retrieve_image(image_spec)
+        spec = ImageSpec(image_spec)
+        backing_image = self.backend.retrieve_image(spec)
         safe_vmname = storage_safe_encode(vm_name)
         safe_image_identifier = storage_safe_encode(backing_image.identifier)
         new_image_path = os.path.join(

@@ -72,7 +72,9 @@ class TransientVm:
 
     def __use_backend_images(self, names: List[str]) -> List[store.BackendImageInfo]:
         """Ensure the backend images are download for each image spec in 'names'"""
-        return [self.vmstore.backend.retrieve_image(name) for name in names]
+        return [
+            self.vmstore.backend.retrieve_image(store.ImageSpec(name)) for name in names
+        ]
 
     def __is_stateless(self) -> bool:
         """Checks if the VM does not require any persistent storage on disk"""
