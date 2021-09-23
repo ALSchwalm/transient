@@ -522,3 +522,6 @@ class TransientArgs:
 
     def __iter__(self) -> Iterator[Tuple[Any, Any]]:
         return iter(vars(self.parsed).items())
+
+    def print_help(self) -> None:
+        ROOT_PARSER.print_help()

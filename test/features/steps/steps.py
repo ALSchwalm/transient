@@ -76,6 +76,17 @@ def wait_on_vm(context):
     context.returncode = context.handle.returncode
 
 
+@given("a transient command")
+def step_impl(context):
+    context.vm_config = {
+        "command": [],
+        "transient-image": None,
+        "transient-early-args": [],
+        "transient-args": [],
+        "qemu-args": [],
+    }
+
+
 @given("a transient run command")
 def step_impl(context):
     context.vm_config = {

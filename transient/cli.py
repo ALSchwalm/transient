@@ -313,12 +313,17 @@ def image_rm_impl(args: args.TransientArgs) -> None:
             imgstore.delete_image(item)
 
 
+def help_impl(args: args.TransientArgs) -> None:
+    args.print_help()
+
+
 def sigint_handler(sig: int, _frame: Any) -> None:
     logging.warning("transient process received SIGINT")
     sys.exit(1)
 
 
 CLI_COMMAND_MAPPINGS = {
+    None: (help_impl, False),
     "create": (create_impl, True),
     "run": (run_impl, True),
     "rm": (rm_impl, False),

@@ -1,6 +1,12 @@
 Feature: Command line interface
   In order to use transient, users can access the command line interface.
 
+  Scenario: Missing subcommand
+    Given a transient command
+     When the transient command is run
+     Then the return code is 0
+      And stdout contains "usage:"
+
   Scenario: Invalid flag
     Given a transient run command
       And an http alpine disk image
