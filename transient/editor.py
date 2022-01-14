@@ -173,11 +173,12 @@ class ImageEditor:
                         f"mount -t {fstype} {path} /mnt > /dev/null",
                         "[ -f /mnt/etc/fstab ]",
                     ],
+                    capture_stderr=True,
                 )
                 return
             except Exception as e:
                 logging.debug(f"Failed to read /etc/fstab from {path}: {e}")
-                self.run_command_in_guest("umount /mnt > /dev/null", allowfail=True)
+                self.run_command_in_guest("umount /mnt > /dev/null 2>&1", allowfail=True)
                 continue
         raise RuntimeError("Unable to locate /etc/fstab")
 
