@@ -56,6 +56,7 @@ class TransientVm:
     set_ssh_port: Optional[int]
     vmstate: Optional[store.VmPersistentState]
     state: TransientVmState
+    copy_out_done: bool
 
     def __init__(self, config: configuration.RunConfig, vmstore: store.VmStore) -> None:
         self.config = config
@@ -69,6 +70,7 @@ class TransientVm:
         self.data_tempfile = tempfile.TemporaryFile("wb+", buffering=0)
         self.set_ssh_port = None
         self.vmstate = None
+        self.copy_out_done = False
 
     def __use_backend_images(self, names: List[str]) -> List[store.BackendImageInfo]:
         """Ensure the backend images are download for each image spec in 'names'"""
@@ -87,6 +89,15 @@ class TransientVm:
            before starting the VM
         """
         return len(self.config.copy_in_before) > 0
+
+    def __qemu_is_running(self) -> bool:
+        return (self.qemu_runner and self.qemu_runner.is_running()) or False
+
+    def transfer(self, host_path: str, guest_path: str, copy_from: bool) -> None:
+        """ Perform rsync/scp transfer, assumes guest is up """
+        use_rsync = configuration.config_wants_rsync_transfer(self.config)
+        assert self.ssh_config is not None
+        ssh.transfer(host_path, guest_path, self.ssh_config, copy_from, use_rsync)
 
     def __copy_in_files(self) -> None:
         """Copies the given files or directories (located on the host) into the VM"""
@@ -110,19 +121,25 @@ class TransientVm:
         if not vm_absolute_path.startswith("/"):
             raise RuntimeError(f"Absolute path for guest required: {vm_absolute_path}")
 
-        assert isinstance(self.primary_image, store.FrontendImageInfo)
-        assert self.primary_image.backend is not None
-        logging.info(
-            f"Copying from '{host_path}' to '{self.primary_image.backend.identifier}:{vm_absolute_path}'"
-        )
+        if not self.__qemu_is_running():
+            assert isinstance(self.primary_image, store.FrontendImageInfo)
+            assert self.primary_image.backend is not None
+            logging.info(
+                f"Copying from '{host_path}' to '{self.primary_image.backend.identifier}:{vm_absolute_path}'"
+            )
 
-        with editor.ImageEditor(
-            self.primary_image.path,
-            self.config.ssh_timeout,
-            self.config.qmp_timeout,
-            self.config.rsync,
-        ) as edit:
-            edit.copy_in(host_path, vm_absolute_path)
+            with editor.ImageEditor(
+                self.primary_image.path,
+                self.config.ssh_timeout,
+                self.config.qmp_timeout,
+                self.config.rsync,
+            ) as edit:
+                edit.copy_in(host_path, vm_absolute_path)
+        else:
+            logging.info(
+                f"Copying from '{host_path}' to '(EXISTING QEMU):{vm_absolute_path}'"
+            )
+            self.transfer(host_path, vm_absolute_path, copy_from=False)
 
     def __needs_to_copy_out_files_after_running(self) -> bool:
         """Checks if at least one directory on the VM needs to be copied out
@@ -152,19 +169,25 @@ class TransientVm:
         if not vm_absolute_path.startswith("/"):
             raise RuntimeError(f"Absolute path for guest required: {vm_absolute_path}")
 
-        assert isinstance(self.primary_image, store.FrontendImageInfo)
-        assert self.primary_image.backend is not None
-        logging.info(
-            f"Copying from '{self.primary_image.backend.identifier}:{vm_absolute_path}' to '{host_path}'"
-        )
+        if not self.__qemu_is_running():
+            assert isinstance(self.primary_image, store.FrontendImageInfo)
+            assert self.primary_image.backend is not None
+            logging.info(
+                f"Copying from '{self.primary_image.backend.identifier}:{vm_absolute_path}' to '{host_path}'"
+            )
 
-        with editor.ImageEditor(
-            self.primary_image.path,
-            self.config.ssh_timeout,
-            self.config.qmp_timeout,
-            self.config.rsync,
-        ) as edit:
-            edit.copy_out(vm_absolute_path, host_path)
+            with editor.ImageEditor(
+                self.primary_image.path,
+                self.config.ssh_timeout,
+                self.config.qmp_timeout,
+                self.config.rsync,
+            ) as edit:
+                edit.copy_out(vm_absolute_path, host_path)
+        else:
+            logging.info(
+                f"Copying from '(EXISTING QEMU):{vm_absolute_path}' to '{host_path}'"
+            )
+            self.transfer(vm_absolute_path, host_path, copy_from=True)
 
     def __qemu_added_args(self) -> List[str]:
         new_args = ["-name", self.name]
@@ -226,6 +249,12 @@ class TransientVm:
             extra_options=self.config.ssh_option,
         )
 
+    def __ensure_ssh(self) -> None:
+        assert self.ssh_config is not None
+        client = ssh.SshClient(config=self.ssh_config, command="exit 0")
+        conn = client.connect_stdout(timeout=self.config.ssh_timeout)
+        conn.wait()
+
     def __connect_ssh(self) -> int:
         assert self.ssh_config is not None
         client = ssh.SshClient(config=self.ssh_config, command=self.config.ssh_command)
@@ -281,8 +310,9 @@ class TransientVm:
     def __post_run(self, returncode: int) -> None:
         self.state = TransientVmState.FINISHED
 
-        if self.__needs_to_copy_out_files_after_running():
+        if self.__needs_to_copy_out_files_after_running() and not self.copy_out_done:
             self.__copy_out_files()
+            self.copy_out_done = True
 
         # If the config name is None, this is a temporary VM,
         # so remove any generated frontend images. However, if the
@@ -342,6 +372,13 @@ class TransientVm:
 
     def __do_run(self) -> None:
         self.state = TransientVmState.RUNNING
+        self.copy_out_done = False
+
+        # direct copy-in can only be done with SSH console (for the "before" part and only when requested with --direct-copy)
+        will_direct_copy_in = (
+            configuration.config_requires_ssh_console(self.config)
+            and self.config.direct_copy
+        )
 
         if not self.__is_stateless():
             assert self.vmstate is not None
@@ -357,7 +394,7 @@ class TransientVm:
                 self.config.extra_image
             )
 
-        if self.__needs_to_copy_in_files_before_running():
+        if self.__needs_to_copy_in_files_before_running() and not will_direct_copy_in:
             self.__copy_in_files()
 
         print("Finished preparation. Starting virtual machine")
@@ -423,6 +460,10 @@ class TransientVm:
         self.__prepare_proc_data()
 
         if configuration.config_requires_ssh_console(self.config):
+            if self.__needs_to_copy_in_files_before_running() and will_direct_copy_in:
+                self.__ensure_ssh()
+                self.__copy_in_files()
+
             # Note that we always return the SSH exit code, even if the guest failed to
             # shut down. This ensures the shutdown_timeout=0 case is handled as expected.
             # (i.e., it returns the SSH code instead of a QEMU error)
@@ -432,6 +473,17 @@ class TransientVm:
             # processing the SHUTDOWN event. So set this flag so we don't do the
             # SIGCHLD exit.
             self.qemu_should_die = True
+
+            if self.__needs_to_copy_out_files_after_running() and self.config.direct_copy:
+                # If the VM was shutdown or is otherwise inaccessible,
+                # the copy-out operation will also be attempted in __post_run.
+                try:
+                    self.__copy_out_files()
+                    self.copy_out_done = True
+                except utils.TransientProcessError as e:
+                    logging.error(
+                        "copy_out during existing QEMU session failed: {}".format(e)
+                    )
 
             try:
                 # Wait a bit for the guest to finish the shutdown and QEMU to exit

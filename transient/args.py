@@ -175,6 +175,12 @@ def define_parsers(include_defaults: bool) -> Tuple[argparse.ArgumentParser, ...
         help="The maximum time to wait for a copy-in-before or copy-out-after operation to complete",
     )
     common_oneshot_parser.add_argument(
+        "--direct-copy",
+        action="store_const",
+        const=True,
+        help="Transfier files specified via --copy-in-before or --copy-in-after directly to the VM, instead of a background 'builder' VM",
+    )
+    common_oneshot_parser.add_argument(
         "--rsync",
         action="store_const",
         const=True,

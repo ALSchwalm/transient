@@ -225,7 +225,7 @@ def step_impl(context, image):
 def step_impl(context):
     context.vm_config[
         "transient-image"
-    ] = "alpine_rel3,http=https://github.com/ALSchwalm/transient-baseimages/releases/download/5/alpine-3.13.qcow2.xz"
+    ] = "alpine_rel3,http=https://github.com/ALSchwalm/transient-baseimages/releases/download/6/alpine-3.13.qcow2.xz"
 
 
 @given("an http centos disk image")
@@ -334,6 +334,13 @@ def step_impl(context):
         context.vm_config["guest-path"], context.vm_config["host-directory"]
     )
     context.vm_config["transient-args"].extend(["--copy-out-after", directory_mapping])
+
+
+@given('using the "{image_type}" image for copying')
+def step_impl(context, image_type):
+    assert image_type in ("same", "dedicated"), repr(image_type)
+    if image_type == "same":
+        context.vm_config["transient-args"].extend(["--direct-copy"])
 
 
 @given('a qemu flag "{flag}"')
