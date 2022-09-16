@@ -19,7 +19,7 @@ from . import args
 
 class ConfigFileParsingError(Exception):
     """Raised when a parsing error is encountered while loading the
-       configuration file
+    configuration file
     """
 
     inner: toml.TomlDecodeError
@@ -35,7 +35,7 @@ class ConfigFileParsingError(Exception):
 
 class ConfigFileOptionError(Exception):
     """Raised when an invalid configuration option value is encountered in the
-       configuration file
+    configuration file
     """
 
     inner: ValidationError
@@ -46,8 +46,7 @@ class ConfigFileOptionError(Exception):
         self.path = path
 
     def _line_number_of_option_in_config_file(self, option: str) -> Optional[int]:
-        """Returns the line number where the option is found in the config file
-        """
+        """Returns the line number where the option is found in the config file"""
         with open(self.path) as config_file:
             for line_number, line in enumerate(config_file, start=1):
                 if option in line:
@@ -69,8 +68,7 @@ class ConfigFileOptionError(Exception):
 
 
 class CLIArgumentError(Exception):
-    """Raised when an invalid command line argument is encountered
-    """
+    """Raised when an invalid command line argument is encountered"""
 
     inner: ValidationError
 

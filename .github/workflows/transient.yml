@@ -11,39 +11,42 @@ jobs:
       uses: actions/setup-python@v2
       with:
         python-version: 3.8
-    - name: Install python dependencies
+    - name: Install Python dependencies
       run: |
-        python -m pip install --upgrade pip
-        python -m pip install -e '.[dev]'
+        python3 -m pip install --upgrade pip
+        python3 -m pip install poetry
+        poetry install
     - name: Check Format
       run: |
-        make check-format
+        poetry run make check-format
     - name: Check Types
       run: |
-        make check-types
+        poetry run make check-types
 
   UnitTests:
     runs-on: ubuntu-18.04
     strategy:
       matrix:
-        python-version: [3.6, 3.7, 3.8, 3.9]
+        python-version: [3.7, 3.8, 3.9, "3.10"]
     steps:
     - uses: actions/checkout@v2
     - name: Set up Python ${{ matrix.python-version }}
       uses: actions/setup-python@v2
       with:
         python-version: ${{ matrix.python-version }}
-    - name: Install python dependencies
+    - name: Install Python dependencies
       run: |
-        python -m pip install --upgrade pip
-        python -m pip install -e '.[dev]'
+        python3 -m pip install --upgrade pip
+        python3 -m pip install poetry
+        poetry install
     - name: Test with pytest
       run: |
-        make unittest
+        poetry run make unittest
 
-  Ubuntu-2004-Docker:
-    runs-on: ubuntu-18.04
+  Ubuntu-Docker:
+    runs-on: ubuntu-22.04
     strategy:
+      fail-fast: true
       matrix:
         feature:
           - cli
@@ -60,8 +63,9 @@ jobs:
           - ssh_command
           - sshfs
           - sanity
+        docker_ubuntu_version: [20.04, 22.04]
     container:
-      image: ubuntu:20.04
+      image: ubuntu:${{ matrix.docker_ubuntu_version }}
       env:
         DEBIAN_FRONTEND: noninteractive
     steps:
@@ -73,16 +77,16 @@ jobs:
     - name: Install python dependencies
       run: |
         python3 -m pip install --upgrade pip
-        python3 -m pip install -e '.[dev]'
+        python3 -m pip install poetry
+        poetry install
     - name: Run tests
       run: |
-        make test-docker-behave-ci-${{ matrix.feature }}.feature
+        poetry run make test-docker-behave-ci-${{ matrix.feature }}.feature
 
-  Ubuntu-1804-VM:
-    runs-on: ubuntu-18.04
+  Ubuntu-VM:
     strategy:
       matrix:
-        python-version: [3.6, 3.8]
+        python-version: [3.7, "3.10"]
         feature:
           - cli
           - build
@@ -94,6 +98,8 @@ jobs:
           - ssh_command
           - sshfs
           - sanity
+        os: [18.04]
+    runs-on: ubuntu-${{ matrix.os }}
     steps:
     - uses: actions/checkout@v2
     - name: Install package dependencies
@@ -106,8 +112,9 @@ jobs:
         python-version: ${{ matrix.python-version }}
     - name: Install python dependencies
       run: |
-        python -m pip install --upgrade pip
-        python -m pip install -e '.[dev]'
+        python3 -m pip install --upgrade pip
+        python3 -m pip install poetry
+        poetry install
     - name: Run tests
       run: |
-        make test-behave-ci-${{ matrix.feature }}.feature
+        poetry run make test-behave-ci-${{ matrix.feature }}.feature

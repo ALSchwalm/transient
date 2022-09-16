@@ -84,7 +84,7 @@ class TransientVm:
 
     def __needs_to_copy_in_files_before_running(self) -> bool:
         """Checks if at least one file or directory on the host needs to be copied into the VM
-           before starting the VM
+        before starting the VM
         """
         return len(self.config.copy_in_before) > 0
 
@@ -126,7 +126,7 @@ class TransientVm:
 
     def __needs_to_copy_out_files_after_running(self) -> bool:
         """Checks if at least one directory on the VM needs to be copied out
-           to the host after stopping the VM
+        to the host after stopping the VM
         """
         return len(self.config.copy_out_after) > 0
 

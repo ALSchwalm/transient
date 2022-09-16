@@ -125,9 +125,16 @@ def test_config_flag(description, config, transient_args, qemu_args, expected):
             create_test_create_config(
                 {"image": "example-image", "qemu_args": ["-smp", "2"]}
             ),
-            create_test_start_config({"qemu_args": ["-m", "1G"],}),
+            create_test_start_config(
+                {
+                    "qemu_args": ["-m", "1G"],
+                }
+            ),
             create_test_run_config(
-                {"image": "example-image", "qemu_args": ["-smp", "2", "-m", "1G"],}
+                {
+                    "image": "example-image",
+                    "qemu_args": ["-smp", "2", "-m", "1G"],
+                }
             ),
         ),
         (

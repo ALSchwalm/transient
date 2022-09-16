@@ -17,10 +17,10 @@ Feature: SSH Console
       And a ssh console
      When the vm runs
       And the vm is provided stdin:
-    """
-    echo 'ssh-console working'
-    exit
-    """
+      """
+      echo 'ssh-console working'
+      exit
+      """
       And we wait for the vm to exit
      Then the return code is 0
       And stdout contains "ssh-console working"
@@ -31,10 +31,10 @@ Feature: SSH Console
       And a ssh-with-serial console
      When the vm runs
       And the vm is provided stdin:
-    """
-    echo 'ssh-console working'
-    exit
-    """
+      """
+      echo 'ssh-console working'
+      exit
+      """
       And we wait for the vm to exit
      Then the return code is 0
       And stdout contains "ssh-console working"

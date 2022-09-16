@@ -1,0 +1,39 @@
+[tool.poetry]
+name = "transient"
+version = "0.25.0"
+description = "A QEMU wrapper adding vagrant support and shared folders"
+authors = ["Adam Schwalm <adamschwalm@gmail.com>"]
+license = "MIT"
+readme = "README.md"
+documentation = "https://transient.readthedocs.io/en/latest"
+keywords = ["qemu"]
+
+[tool.poetry.dependencies]
+python = "^3.7"
+beautifultable = ">=1"
+click = ">=7.1.2"
+importlib-resources = ">=1.5"
+marshmallow = ">=3.6.1"
+lark-parser = ">=0.8.5"
+progressbar2 = ">=3.51.3"
+requests = ">=2.23"
+toml = ">=0.10.1"
+
+[tool.poetry.group.dev.dependencies]
+black = ">=19.10b0"
+mkdocs = ">=1.1.2"
+mypy = "==0.800"
+pyhamcrest = ">=2.0.2"
+typing = ">=3.7.4.1"
+behave = ">=1.2.6"
+pytest = ">=6.2"
+pytest-cov = ">=2.12"
+reformat-gherkin = ">=2.0.1"
+vulture = ">=2.3"
+
+[tool.poetry.scripts]
+transient = "transient.cli:main"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
