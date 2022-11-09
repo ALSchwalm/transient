@@ -1,6 +1,6 @@
 import enum
 import os
-import lark  # type: ignore
+import lark
 import logging
 import pathlib
 import subprocess
@@ -12,6 +12,7 @@ from . import store
 from . import utils
 from . import ssh
 
+from lark.tree import ParseTree, Branch
 from typing import (
     Sequence,
     Callable,
@@ -69,7 +70,19 @@ COMMENT: /#[^\n]*/
 %ignore COMMENT
 %ignore /\\[\t \f]*\r?\n/   // LINE_CONT
 """
-IMAGEFILE_PARSER = lark.Lark(IMAGEFILE_GRAMMAR, parser="lalr").parse
+IMAGEFILE_PARSER = lark.lark.Lark(IMAGEFILE_GRAMMAR, parser="lalr").parse
+
+T = TypeVar("T")
+
+
+def _read_as_token(node: Branch[lark.lexer.Token]) -> lark.lexer.Token:
+    assert isinstance(node, lark.lexer.Token)
+    return node
+
+
+def _read_as_tree(node: Branch[lark.lexer.Token]) -> ParseTree:
+    assert isinstance(node, lark.tree.Tree)
+    return node
 
 
 class GuestChrootCommand(editor.GuestCommand):
@@ -104,7 +117,7 @@ class ImageInstruction:
 
 
 class InspectInstruction(ImageInstruction):
-    def __init__(self, _ast: lark.tree.Tree) -> None:
+    def __init__(self, _ast: ParseTree) -> None:
         pass
 
     def __str__(self) -> str:
@@ -114,8 +127,10 @@ class InspectInstruction(ImageInstruction):
 class RunInstruction(ImageInstruction):
     command: str
 
-    def __init__(self, ast: lark.tree.Tree) -> None:
-        self.command = " ".join([c.value for c in ast.children[0].children])
+    def __init__(self, ast: ParseTree) -> None:
+        self.command = " ".join(
+            [_read_as_token(c).value for c in _read_as_tree(ast.children[0]).children]
+        )
 
     def commands(self, builder: "ImageBuilder") -> Sequence[editor.Command]:
         return [
@@ -132,9 +147,14 @@ class CopyInstruction(ImageInstruction):
     source: List[str]
     destination: str
 
-    def __init__(self, ast: lark.tree.Tree) -> None:
-        self.source = [node.children[0].value for node in ast.find_data("copy_source")]
-        self.destination = next(ast.find_data("copy_destination")).children[0].value
+    def __init__(self, ast: ParseTree) -> None:
+        self.source = [
+            _read_as_token(node.children[0]).value
+            for node in ast.find_data("copy_source")
+        ]
+        self.destination = _read_as_token(
+            next(ast.find_data("copy_destination")).children[0]
+        ).value
 
     def commands(self, builder: "ImageBuilder") -> Sequence[editor.Command]:
         commands = []
@@ -159,9 +179,13 @@ class AddInstruction(ImageInstruction):
     source: List[str]
     destination: str
 
-    def __init__(self, ast: lark.tree.Tree) -> None:
-        self.source = [node.children[0].value for node in ast.find_data("add_source")]
-        self.destination = next(ast.find_data("add_destination")).children[0].value
+    def __init__(self, ast: ParseTree) -> None:
+        self.source = [
+            _read_as_token(node.children[0]).value for node in ast.find_data("add_source")
+        ]
+        self.destination = _read_as_token(
+            next(ast.find_data("add_destination")).children[0]
+        ).value
 
     def __is_compressed(self, name: str) -> bool:
         return name.endswith(".tar.gz") or name.endswith(".tar.xz")
@@ -201,10 +225,10 @@ class DiskInstruction(ImageInstruction):
     units: str
     type: str
 
-    def __init__(self, ast: lark.tree.Tree) -> None:
-        self.size = int(ast.children[0].value)
-        self.units = ast.children[1].value.upper().replace("B", "")
-        self.type = ast.children[2].value.upper()
+    def __init__(self, ast: ParseTree) -> None:
+        self.size = int(_read_as_token(ast.children[0]).value)
+        self.units = _read_as_token(ast.children[1]).value.upper().replace("B", "")
+        self.type = _read_as_token(ast.children[2]).value.upper()
 
     def commands(self, builder: "ImageBuilder") -> Sequence[editor.Command]:
         return [
@@ -227,18 +251,18 @@ class PartitionInstruction(ImageInstruction):
     flags: Optional[List[str]]
     number: int
 
-    def __init__(self, ast: lark.tree.Tree) -> None:
-        self.number = int(ast.children[0].value)
+    def __init__(self, ast: ParseTree) -> None:
+        self.number = int(_read_as_token(ast.children[0]).value)
 
         format = next(ast.find_data("partition_format"), None)
         if format is not None:
-            self.format = format.children[0].value.lower()
+            self.format = _read_as_token(format.children[0]).value.lower()
             if self.format not in self.__supported_formats():
                 raise RuntimeError(f"Unsupported partition format '{self.format}'")
 
             options = next(ast.find_data("partition_options"), None)
             if options is not None:
-                self.options = options.children[0].value.strip('"')
+                self.options = _read_as_token(options.children[0]).value.strip('"')
             else:
                 self.options = ""
         else:
@@ -247,21 +271,21 @@ class PartitionInstruction(ImageInstruction):
 
         mount = next(ast.find_data("partition_mount"), None)
         if mount is not None:
-            self.mount = mount.children[0].value
+            self.mount = _read_as_token(mount.children[0]).value
         else:
             self.mount = None
 
         size = next(ast.find_data("partition_size"), None)
         if size is not None:
-            self.units = size.children[1].value.upper()
-            self.size = int(size.children[0].value)
+            self.units = _read_as_token(size.children[1]).value.upper()
+            self.size = int(_read_as_token(size.children[0]).value)
         else:
             self.units = None
             self.size = None
 
         flags = next(ast.find_data("partition_flags"), None)
         if flags is not None:
-            self.flags = [child.value.lower() for child in flags.children]
+            self.flags = [_read_as_token(child).value.lower() for child in flags.children]
         else:
             self.flags = None
 
@@ -329,15 +353,15 @@ class PartitionInstruction(ImageInstruction):
 class FromInstruction(ImageInstruction):
     source: str
 
-    def __init__(self, ast: lark.tree.Tree) -> None:
-        self.source = ast.children[0].value
+    def __init__(self, ast: ParseTree) -> None:
+        self.source = _read_as_token(ast.children[0]).value
 
     def __str__(self) -> str:
         return f"FROM {self.source}"
 
 
-def _build_instruction(ast: lark.tree.Tree) -> ImageInstruction:
-    cmd = ast.children[0]
+def _build_instruction(ast: ParseTree) -> ImageInstruction:
+    cmd = _read_as_tree(ast.children[0])
     if cmd.data == "run":
         return RunInstruction(cmd)
     elif cmd.data == "inspect":
@@ -354,9 +378,6 @@ def _build_instruction(ast: lark.tree.Tree) -> ImageInstruction:
         return FromInstruction(cmd)
     else:
         raise RuntimeError(f"Unsupported build instruction: '{cmd.data}'")
-
-
-T = TypeVar("T")
 
 
 class ImageBuilder:
