@@ -60,7 +60,7 @@ def prompt_yes_no(prompt: str, default: Optional[bool] = None) -> bool:
 
 
 def format_bytes(size: float) -> str:
-    power = 2 ** 10
+    power = 2**10
     n = 0
     labels = {0: "B", 1: "KiB", 2: "MiB", 3: "GiB", 4: "TiB"}
     while size >= power:
@@ -202,7 +202,7 @@ def lock_file(
 def read_until(
     source: io.BufferedReader, sentinel: bytes, timeout: Optional[float] = None
 ) -> bytes:
-    """ Read from an IO source until the given sentinel is seen
+    """Read from an IO source until the given sentinel is seen
 
     This can be thought of as a generalization of IOBase.readline(). When called,
     this method will read bytes from the source until the bytes in 'sentinel'
@@ -383,20 +383,27 @@ def run_check_retcode(
         )
     except subprocess.TimeoutExpired as e:
         raise TransientProcessError(
-            cmd=e.cmd, stdout=e.stdout, stderr=e.stderr,
+            cmd=e.cmd,
+            stdout=e.stdout,
+            stderr=e.stderr,
         )
     except FileNotFoundError as e:
         prog = repr(cmd[0])
-        raise TransientProcessError(msg=f"Required program {prog} is not installed",)
+        raise TransientProcessError(
+            msg=f"Required program {prog} is not installed",
+        )
     except OSError as e:
         # covers "permission denied" and any other reason the OS might refuse
         # to run the binary for us.
         prog = repr(cmd[0])
         err = os.strerror(e.errno)
-        raise TransientProcessError(msg=f"Could not run required program {prog}: {err}",)
+        raise TransientProcessError(
+            msg=f"Could not run required program {prog}: {err}",
+        )
     except UnicodeDecodeError as e:
         raise TransientProcessError(
-            msg=f"Command produced garbage", cmd=cmd,
+            msg=f"Command produced garbage",
+            cmd=cmd,
         )
 
 

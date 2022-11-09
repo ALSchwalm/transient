@@ -12,7 +12,8 @@ STORAGE_ENCODE_TESTS = (
 
 
 @pytest.mark.parametrize(
-    ("test_input", "expected"), STORAGE_ENCODE_TESTS,
+    ("test_input", "expected"),
+    STORAGE_ENCODE_TESTS,
 )
 def test_storage_safe_encode(test_input, expected):
     assert s.storage_safe_encode(test_input) == expected

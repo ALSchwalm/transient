@@ -68,13 +68,13 @@ def find_transient_instances(
 ) -> List[TransientInstance]:
     """Find running transient instances matching the given parameters
 
-       If 'name' is specified, only instances started with a equivalent 'name'
-       argument will be returned. 'with_ssh' will filter for instances that
-       were started with '--ssh' (or other options that imply '--ssh'). If the
-       'timeout' option is passed, this function will block until at least one
-       instance matching the provided parameters is found, or a timeout occurs.
-       If 'vmstore' is passed, only VMs backed by the given store are considered.
-       Note that 'timeout' may not be passed by itself.
+    If 'name' is specified, only instances started with a equivalent 'name'
+    argument will be returned. 'with_ssh' will filter for instances that
+    were started with '--ssh' (or other options that imply '--ssh'). If the
+    'timeout' option is passed, this function will block until at least one
+    instance matching the provided parameters is found, or a timeout occurs.
+    If 'vmstore' is passed, only VMs backed by the given store are considered.
+    Note that 'timeout' may not be passed by itself.
     """
     if name is None and with_ssh is False and timeout is not None:
         raise RuntimeError(
