@@ -108,9 +108,9 @@ def schema_from_argument_parser(parser: argparse.ArgumentParser) -> Type[Schema]
 
         # If this is an append action, we really want a list of these fields
         if isinstance(arg, argparse._AppendAction) or arg.nargs in ("*", "+"):
-            return fields.List(field, missing=arg.default, allow_none=True)
+            return fields.List(field, load_default=arg.default, allow_none=True)
 
-        return cast(fields.Field, field(missing=arg.default, allow_none=True))
+        return cast(fields.Field, field(load_default=arg.default, allow_none=True))
 
     class_name = "".join([word.capitalize() for word in parser.prog.split()]) + "Schema"
     return cast(
